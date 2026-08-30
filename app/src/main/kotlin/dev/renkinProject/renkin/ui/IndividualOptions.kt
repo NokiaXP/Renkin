@@ -40,6 +40,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import dev.renkinProject.renkin.IconPreviewBuilder
+import dev.renkinProject.renkin.OnlineImageImport
 import android.graphics.Bitmap
 import dev.renkinProject.renkin.icon.creator.ColorizerStyle
 import dev.renkinProject.renkin.icon.creator.SegmentLayer
@@ -113,12 +114,12 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 
-/** The source that produced the icon currently being previewed and confirmed. */
 internal enum class IconOrigin { CREATE, UPLOAD, VECTOR }
 
 /** Source-pack attribution for the draft that Apply will persist. */
@@ -166,10 +167,8 @@ internal class IconDraftState(initialIcon: IconPackDrawable?) {
         private set
     private var modifiedVector by mutableStateOf<IconPackDrawable?>(null)
 
-    /** Which source produced the icon currently being previewed/confirmed. */
     var origin by mutableStateOf(IconOrigin.CREATE)
 
-    /** True while an icon is being (re)generated; drives the spinner over the preview slot. */
     var generating by mutableStateOf(false)
         private set
     private var activeGenerations = 0
@@ -178,7 +177,6 @@ internal class IconDraftState(initialIcon: IconPackDrawable?) {
     // changes a source, modifier or selects an icon.
     private var initialized = false
 
-    /** The modifier needs something to act on — false greys out the Modifier tab. */
     val hasIcon: Boolean get() = createIcon != null || uploadBase != null || vectorIcon != null
 
     /**
@@ -203,7 +201,6 @@ internal class IconDraftState(initialIcon: IconPackDrawable?) {
         origin = IconOrigin.CREATE
     }
 
-    /** Activates an uploaded image and forgets the previous Create/vector drafts. */
     fun selectUpload(icon: IconPackDrawable) {
         createIcon = null
         vectorIcon = null
@@ -213,13 +210,11 @@ internal class IconDraftState(initialIcon: IconPackDrawable?) {
         origin = IconOrigin.UPLOAD
     }
 
-    /** Clears a removed/corrupt gallery selection without changing the active source. */
     fun clearUpload() {
         uploadBase = null
         uploadIcon = null
     }
 
-    /** Activates a vector and forgets the previous Create/upload drafts. */
     fun selectVector(icon: IconPackDrawable) {
         createIcon = null
         uploadBase = null
@@ -229,7 +224,6 @@ internal class IconDraftState(initialIcon: IconPackDrawable?) {
         origin = IconOrigin.VECTOR
     }
 
-    /** Clears an empty vector editor without changing the active source. */
     fun clearVector() {
         vectorIcon = null
         modifiedVector = null
@@ -247,7 +241,6 @@ internal class IconDraftState(initialIcon: IconPackDrawable?) {
         }
     }
 
-    /** Rebuilds the Create-tab icon for [options] (and an optional explicit pack pick). */
     suspend fun regenerateCreate(
         builder: IconPreviewBuilder,
         app: PackageInfoStruct,
@@ -263,20 +256,17 @@ internal class IconDraftState(initialIcon: IconPackDrawable?) {
         // longer blocks the main thread; show the spinner for the duration.
         createIcon = trackGeneration {
             when {
-                // Explicit pick from a pack
                 custom != null -> builder.previewIcon(app, options, custom)
                 // Icon-pack source with no new pick: apply the modifier to the already saved icon
                 // rather than pulling a fresh one from the first pack (which would swap the icon
                 // out from under the user). Null until a tap if none.
                 options.primarySource == Source.ICON_PACK ->
                     (app.baseIcon ?: app.createdIcon)?.let { builder.applyModifier(it, options) }
-                // Text / app-icon sources generate from the source itself
                 else -> builder.previewIcon(app, options, null)
             }
         }
     }
 
-    /** Reapplies the shared modifier to the hand-edited vector (it isn't built from a source). */
     suspend fun regenerateVector(builder: IconPreviewBuilder, options: GenerationOptions) {
         val base = vectorIcon
         modifiedVector = when {
@@ -291,7 +281,6 @@ internal class IconDraftState(initialIcon: IconPackDrawable?) {
         }
     }
 
-    /** Reapplies the shared modifier (edit / color / scale) to the uploaded image. */
     suspend fun regenerateUpload(builder: IconPreviewBuilder, options: GenerationOptions) {
         val base = uploadBase
         uploadIcon = if (base == null) null else trackGeneration { builder.applyModifier(base, options) }
@@ -313,8 +302,6 @@ fun OptionsDialog(
     var source by rememberSaveable { mutableStateOf(Source.ICON_PACK) }
     var imageEdit by rememberSaveable { mutableStateOf(ImageEdit.NONE) }
     var textType by rememberSaveable { mutableStateOf(TextType.FULL_NAME) }
-    // Text-source extras: the CUSTOM type's string (seeded with the app name), the letter-case
-    // transform, and the font — per-app; the font starts from the global preference.
     var customText by rememberSaveable { mutableStateOf(app.appName) }
     var textCase by rememberSaveable { mutableStateOf(TextCase.AS_IS) }
     val globalFontPath = getPreferences().getStringValue(TextFontKey)
@@ -322,11 +309,8 @@ fun OptionsDialog(
     var useVector by rememberSaveable { mutableStateOf(false) }
     var applicationIconVariant by rememberSaveable { mutableStateOf(ApplicationIconVariant.DEFAULT) }
     var invertMonochrome by rememberSaveable { mutableStateOf(false) }
-    // Material You variant: which colour scheme tints the icon. 0..schemes-1 pick a wallpaper-derived
-    // Material You scheme (foreground+background); the last index is Custom (manual colour below).
     var materialYouScheme by rememberSaveable { mutableIntStateOf(0) }
     var iconColor by rememberSaveable(saver = colorSaver()) { mutableStateOf(Color.White) }
-    // Background for the Material You variant's Custom scheme (the system schemes carry their own).
     var customBgColor by rememberSaveable(saver = colorSaver()) { mutableStateOf(Color.Black) }
     // The Custom scheme's full styles. The flat colours above stay their first stop, because the
     // pack's own Material You layers and the vector export can only take one colour.
@@ -344,21 +328,12 @@ fun OptionsDialog(
     // and returning to the tab; it starts at the app's non-localized name and resets per dialog
     // (i.e. per edit) — icon packs name drawables in English, so the localized label rarely matches.
     var createSearchQuery by rememberSaveable { mutableStateOf(app.originalName) }
-    // Sorts live in the top bar's menu (Mihon-style bar), so they're dialog state like the query.
     var iconSortOrder by rememberSaveable { mutableStateOf(IconSortOrder.NAME_ASC) }
     var packSortOrder by rememberSaveable { mutableStateOf(PackSortOrder.USAGE) }
-    // True while the pack rows are still loading/resolving the query — the bar's activity line.
     var createBusy by remember { mutableStateOf(false) }
-    // How often each pack has been used so far, so the icon-pack list can put the user's
-    // most-used packs near the top. Loaded once when the dialog opens.
     var packUsage by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     LaunchedEffect(Unit) { packUsage = viewModel.packUsageCounts() }
-    // The draft icon being built (create/upload/vector previews) and the generation logic
-    // that produces it. See IconDraftState — keeps the dozen drawable states + the regen
-    // effects out of this composable.
     val draft = remember { IconDraftState(app.baseIcon ?: app.createdIcon) }
-    // Hoisted above the tab AnimatedContent so leaving the vector tab and coming back
-    // keeps the user's paths instead of disposing the editor and resetting them.
     val vectorEditState = remember { VectorEditState() }
     // Attribution URL for an online icon imported "as image" (it lands in the upload draft,
     // not the vector editor) and the gallery file it was saved as. The attribution is
@@ -367,8 +342,6 @@ fun OptionsDialog(
     var onlineImagePath by remember { mutableStateOf<String?>(null) }
     var uploadSelectionVersion by rememberSaveable { mutableIntStateOf(0) }
     var showConfirmClear by remember { mutableStateOf(false) }
-    // Enter-always app bar: the header (close / name / overflow) collapses pixel-by-pixel as the
-    // icon list scrolls down and slides back in on scroll up.
     val headerScrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
     // The pack list and the single-pack grid states + which pack is expanded, hoisted so the header
     // can fade the Current/New labels by whichever list is showing — by its exact distance from the
@@ -386,8 +359,6 @@ fun OptionsDialog(
             }
         }
     }
-    // The Modifier tab's adjustment values (edge tuning, scale, tolerance, position), bundled in
-    // one saveable holder instead of eight loose rememberSaveables + callback pairs.
     // The global "Add outline" preference is deliberately NOT seeded here: it applies to the
     // bulk refresh's own (hero-source) icons only, never to hand-picked ones. Per-app outline
     // stays an explicit choice in the Modifier tab.
@@ -396,13 +367,9 @@ fun OptionsDialog(
         saver = MaterialYouPackAdjustmentState.Saver
     ) { MaterialYouPackAdjustmentState() }
 
-    // Calendar day icons — committed immediately when toggled (independent of icon confirm).
+    // Browsing a calendar icon must not persist its rotation choice until Apply.
     var calendarEnabled by rememberSaveable { mutableStateOf(app.calendarEnabled) }
-    // Prefix derived from the selected icon's drawable name (e.g. "bee_calendar_").
-    // Persisted in PackageInfoStruct so it survives dialog reopen. Non-null only when
-    // the currently selected icon ends in _N (meaning day rotation is possible).
     var calendarPrefix by remember { mutableStateOf(app.calendarPrefix) }
-    // Package name of the pack the calendar drawables come from (stored per-app in DB).
     var calendarPackName by remember { mutableStateOf(app.calendarPackName) }
     val calendarPackLabel = iconPacks.find { it.packageName == (calendarPackName ?: iconPack) }?.applicationName ?: ""
 
@@ -444,8 +411,6 @@ fun OptionsDialog(
         draft.selectVector(icon)
     }
 
-    // Slide the editor in from the right; closing plays the reverse animation
-    // before the dialog window is actually dismissed
     val dialogTransition = remember { MutableTransitionState(false).apply { targetState = true } }
     LaunchedEffect(dialogTransition.targetState, dialogTransition.isIdle) {
         if (!dialogTransition.targetState && dialogTransition.isIdle) onDismiss()
@@ -458,8 +423,6 @@ fun OptionsDialog(
         derivedStateOf { dialogTransition.isIdle && dialogTransition.currentState }
     }
 
-    // The comparison header's "current" hero. The shared helper handles the BitmapDrawable
-    // fast path and safely rasterises everything else (a broken icon yields null → placeholder).
     val heroBitmap = remember(app.icon) {
         runCatching { app.icon.toSafeBitmapOrNull() }.getOrNull()
     }
@@ -471,7 +434,6 @@ fun OptionsDialog(
         icon.isAdaptiveIconDrawable() && (icon as AdaptiveIconDrawable).haveMonochrome()
     }
 
-    // Material You colours: a wallpaper-derived scheme (foreground+background) or Custom.
     val isMaterialYouVariant = source == Source.APPLICATION_ICON &&
         applicationIconVariant == ApplicationIconVariant.MATERIAL_YOU
     val materialYouSchemes = rememberMaterialYouSchemes()
@@ -605,8 +567,6 @@ fun OptionsDialog(
         render = renderPreviewWith
     )
 
-    // Regenerate the preview when the options (or the explicit pick) change. The heavy work
-    // hops to Dispatchers.Default inside the view model; the holder drives the spinner.
     LaunchedEffect(generatingOptions, customIconList) {
         draft.regenerateCreate(viewModel, app, generatingOptions, customIconList)
     }
@@ -635,7 +595,6 @@ fun OptionsDialog(
         }
     }
 
-    // Shared by both layouts' Apply buttons (phone header card, wide preview pane).
     val confirmIcon: () -> Unit = {
         // Credit the icon to a pack only when it actually came from one: the Create
         // tab's Icon Pack source. A fresh pick uses the picked pack; keeping the
@@ -700,10 +659,7 @@ fun OptionsDialog(
                         else Modifier.nestedScroll(headerScrollBehavior.nestedScrollConnection)
                     )
             ) {
-                // The Create tab's icon-pack browser gets the Mihon-style search bar chrome.
                 val packBrowsing = selectedTab == 0 && source == Source.ICON_PACK
-                // The tab contents, shared by the phone and wide layouts (all state is hoisted
-                // above, so folding/unfolding mid-edit keeps everything).
                 val tabContent: @Composable (PaddingValues) -> Unit = { headerPadding ->
                     AnimatedContent(
                         targetState = selectedTab,
@@ -745,8 +701,6 @@ fun OptionsDialog(
                                     customIconList = listOf(res)
                                     iconPack = pack.packageName
                                     activateCreate()
-                                    // Derive calendar prefix from the picked icon's name.
-                                    // Any icon ending in _N is a valid calendar candidate.
                                     val newPrefix = drawableName.calendarPrefixOrNull()
                                     calendarPrefix = newPrefix
                                     calendarPackName = if (newPrefix != null) pack.packageName else null
@@ -765,7 +719,6 @@ fun OptionsDialog(
                                 onFontPathChange = { textFontPath = it; activateCreate() },
                                 contentReady = createTabReady,
                                 selectedResourceId = customIconList.firstOrNull()?.resourceId,
-                                // Frame the rotation siblings only once the user has opted in.
                                 selectedCalendarPrefix = calendarPrefix.takeIf { calendarEnabled },
                                 appHasMaterialYouIcon = appHasMaterialYouIcon,
                                 applicationIconVariant = applicationIconVariant,
@@ -829,27 +782,23 @@ fun OptionsDialog(
                                     )
                                 }
                             )
-                            // The static tabs don't scroll under the header — plain top padding.
-                            1 -> Box(Modifier.fillMaxSize().padding(headerPadding)) {
-                                key(uploadSelectionVersion) {
-                                    UploadColumn(
-                                        app = app,
-                                        snackbarHostState = snackbarHostState,
-                                        initialSelectedPath = onlineImagePath
-                                    ) { icon, path ->
-                                        if (icon == null) {
-                                            draft.clearUpload()
-                                        } else {
-                                            // A manual gallery pick replaces an online "as image"
-                                            // import, so its attribution must not outlive the
-                                            // picture; re-selecting the online file keeps it.
-                                            if (path != onlineImagePath) onlineImageUrl = null
-                                            activateUpload(icon)
-                                        }
+                            1 -> UploadOptionsTab(
+                                contentPadding = headerPadding,
+                                selectionVersion = uploadSelectionVersion,
+                                app = app,
+                                snackbarHostState = snackbarHostState,
+                                initialSelectedPath = onlineImagePath,
+                                onSelection = { icon, path ->
+                                    if (icon == null) {
+                                        draft.clearUpload()
+                                    } else {
+                                        if (path != onlineImagePath) onlineImageUrl = null
+                                        activateUpload(icon)
                                     }
                                 }
-                            }
-                            2 -> Box(Modifier.fillMaxSize().padding(headerPadding)) { ModifierTab(
+                            )
+                            2 -> ModifierOptionsTab(
+                                contentPadding = headerPadding,
                                 source = source,
                                 imageEdit = imageEdit,
                                 iconColor = iconColor,
@@ -890,29 +839,24 @@ fun OptionsDialog(
                                         }
                                     }
                                 }
-                            ) }
-                            else -> Box(Modifier.fillMaxSize().padding(headerPadding)) {
-                                PrepareEditVector(
-                                    app = app,
-                                    state = vectorEditState,
-                                    onImportedImage = { imported, url ->
-                                        // "Use as image" from the online browser: route the
-                                        // full-size raster through the upload pipeline so the
-                                        // shared modifier applies like any uploaded picture;
-                                        // the gallery copy arrives preselected in Upload.
-                                        activateUpload(BitmapIconDrawable(imported.bitmap, false))
-                                        onlineImageUrl = url
-                                        onlineImagePath = imported.galleryPath
-                                    }
-                                ) {
+                            )
+                            else -> VectorOptionsTab(
+                                contentPadding = headerPadding,
+                                app = app,
+                                state = vectorEditState,
+                                onImportedImage = { imported, url ->
+                                    activateUpload(BitmapIconDrawable(imported.bitmap, false))
+                                    onlineImageUrl = url
+                                    onlineImagePath = imported.galleryPath
+                                },
+                                onIconChange = {
                                     if (it == null) draft.clearVector() else activateVector(it)
                                 }
-                            }
+                            )
                         }
                     }
                 }
 
-                // Source pills + bottom tab bar, identical on both layouts.
                 val bottomSection: @Composable () -> Unit = {
                     AnimatedVisibility(visible = selectedTab == 0) {
                         SourcePills(source = source) { newSource ->
@@ -932,163 +876,59 @@ fun OptionsDialog(
                     )
                 }
 
-                if (paneLayout != null) {
-                    // Tablets / unfolded foldables: persistent preview pane (big live New
-                    // preview + always-visible Apply) left, the tabs at full height right.
-                    Row(Modifier.fillMaxSize()) {
-                        EditPreviewPane(
-                            heroBitmap = heroBitmap,
-                            appName = app.appName,
-                            previewIcon = draft.iconToConfirm,
-                            previewLoading = draft.generating,
-                            confirmEnabled = !draft.generating,
-                            onDismiss = startClose,
-                            onClear = { showConfirmClear = true },
-                            onConfirm = confirmIcon,
-                            modifier = Modifier.width(paneLayout.leadingWidth),
-                            extraCard = if (selectedTab == 0 && source == Source.ICON_PACK && calendarPrefix != null) {
-                                {
-                                    CalendarCard(
-                                        packName = calendarPackLabel,
-                                        calendarPrefix = calendarPrefix ?: "",
-                                        calendarEnabled = calendarEnabled,
-                                        onToggle = { enabled -> calendarEnabled = enabled }
-                                    )
-                                }
-                            } else null
-                        )
-                        AdaptivePaneSeparator(paneLayout)
-                        Column(Modifier.width(paneLayout.trailingWidth)) {
-                            // The pack browser's chrome moves atop the right pane: back arrow
-                            // (inside a pack), inline search and the sort menu.
-                            if (packBrowsing) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    if (expandedPack != null) {
-                                        IconButton(onClick = { expandedPack = null }) {
-                                            Icon(
-                                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                                contentDescription = stringResource(R.string.dismiss)
-                                            )
-                                        }
-                                    }
-                                    Box(Modifier.weight(1f)) {
-                                        AppBarSearchField(
-                                            query = createSearchQuery,
-                                            onQueryChange = { createSearchQuery = it },
-                                            placeholder = stringResource(R.string.searchIcons)
-                                        )
-                                    }
-                                    IconSortMenuButton(
-                                        sortOrder = iconSortOrder,
-                                        onSortOrderChange = { iconSortOrder = it },
-                                        packSortOrder = packSortOrder,
-                                        onPackSortOrderChange = { packSortOrder = it }
-                                    )
-                                }
-                                if (createBusy) {
-                                    LinearProgressIndicator(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(3.dp)
-                                    )
-                                }
-                            }
-                            HorizontalDivider()
-                            Box(Modifier.weight(1f)) { tabContent(PaddingValues(0.dp)) }
-                            bottomSection()
-                        }
-                    }
-                } else {
-                    Column(Modifier.fillMaxSize()) {
-                // Mihon-style scroll-under chrome: the header overlays the tab content instead of
-                // stacking above it, so the enter-always bar collapse only moves the header — the
-                // content keeps its size and just scrolls beneath, which keeps flings smooth.
-                OverlayHeaderLayout(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    header = {
-                // Opaque header background: content scrolling underneath must not show through
-                // the transparent app bar or around the comparison card.
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                ) {
-                // Sticky comparison header — close/delete/apply live in the same row
-                // and the icons shrink while the icon list is scrolled
-                ComparisonHeader(
+                val preview = OptionsPreview(
                     heroBitmap = heroBitmap,
                     appName = app.appName,
-                    previewIcon = draft.iconToConfirm,
-                    previewLoading = draft.generating,
-                    confirmEnabled = !draft.generating,
+                    icon = draft.iconToConfirm,
+                    loading = draft.generating
+                )
+                val actions = OptionsPreviewActions(
                     onDismiss = startClose,
                     onClear = { showConfirmClear = true },
-                    onConfirm = confirmIcon,
-                    scrollBehavior = headerScrollBehavior,
-                    labelExpand = labelExpand,
-                    // Mihon-style bar on the icon-pack browser: back arrow + inline search +
-                    // sort menu, with a thin activity line while the search still resolves.
-                    titleContent = if (packBrowsing) {
-                        {
-                            AppBarSearchField(
-                                query = createSearchQuery,
-                                onQueryChange = { createSearchQuery = it },
-                                placeholder = stringResource(R.string.searchIcons)
-                            )
-                        }
-                    } else null,
-                    extraActions = if (packBrowsing) {
-                        {
-                            IconSortMenuButton(
-                                sortOrder = iconSortOrder,
-                                onSortOrderChange = { iconSortOrder = it },
-                                packSortOrder = packSortOrder,
-                                onPackSortOrderChange = { packSortOrder = it }
-                            )
-                        }
-                    } else null,
-                    // Unified chrome: every tab uses the back arrow. Inside a pack it returns
-                    // to the pack list; everywhere else it closes the dialog.
-                    onNavigateBack = {
-                        if (packBrowsing && expandedPack != null) expandedPack = null else startClose()
-                    },
-                    showProgress = packBrowsing && createBusy
+                    onConfirm = confirmIcon
+                )
+                val packBrowser = PackBrowserChrome(
+                    visible = packBrowsing,
+                    expanded = expandedPack != null,
+                    busy = createBusy,
+                    query = createSearchQuery,
+                    iconSortOrder = iconSortOrder,
+                    packSortOrder = packSortOrder,
+                    onBack = { expandedPack = null },
+                    onQueryChange = { createSearchQuery = it },
+                    onIconSortChange = { iconSortOrder = it },
+                    onPackSortChange = { packSortOrder = it }
+                )
+                val calendar = CalendarSelection(
+                    visible = selectedTab == 0 && source == Source.ICON_PACK && calendarPrefix != null,
+                    packName = calendarPackLabel,
+                    prefix = calendarPrefix.orEmpty(),
+                    enabled = calendarEnabled,
+                    onToggle = { calendarEnabled = it }
                 )
 
-                // The Create tab draws its own divider under the search bar;
-                // the other tabs get one right below the header
-                if (selectedTab != 0) {
-                    HorizontalDivider()
-                }
-
-                // Calendar card: visible only on Create tab with Icon Pack source when
-                // the selected pack declares a <calendar> entry for this app.
-                AnimatedVisibility(
-                    visible = selectedTab == 0 && source == Source.ICON_PACK && calendarPrefix != null
-                ) {
-                    CalendarCard(
-                        packName = calendarPackLabel,
-                        calendarPrefix = calendarPrefix ?: "",
-                        calendarEnabled = calendarEnabled,
-                        // Local state only: the calendar choice commits together with the icon
-                        // on Apply (the applyIcon overload). Persisting it here leaked the
-                        // prefix of a browsed-but-never-confirmed icon into the stored app.
-                        onToggle = { enabled -> calendarEnabled = enabled }
+                if (paneLayout != null) {
+                    WideOptionsLayout(
+                        paneLayout = paneLayout,
+                        preview = preview,
+                        actions = actions,
+                        packBrowser = packBrowser,
+                        calendar = calendar,
+                        tabContent = tabContent,
+                        bottomSection = bottomSection
                     )
-                }
-                }
-                    }
-                ) { headerPadding -> tabContent(headerPadding) }
-
-                bottomSection()
-                    }
+                } else {
+                    PhoneOptionsLayout(
+                        selectedTab = selectedTab,
+                        preview = preview,
+                        actions = actions,
+                        packBrowser = packBrowser,
+                        calendar = calendar,
+                        headerScrollBehavior = headerScrollBehavior,
+                        labelExpand = labelExpand,
+                        tabContent = tabContent,
+                        bottomSection = bottomSection
+                    )
                 }
 
             SnackbarHost(
@@ -1113,12 +953,287 @@ fun OptionsDialog(
     }
 }
 
+private data class OptionsPreview(
+    val heroBitmap: Bitmap?,
+    val appName: String,
+    val icon: IconPackDrawable?,
+    val loading: Boolean
+)
 
-/**
- * The dialog's bottom tab bar. Create / Upload / Edit-vector switch freely; the Modifier tab
- * sits last and stays greyed out until there is an icon to act on ([modifierEnabled]) — tapping
- * it then calls [onModifierBlocked] (a "select an icon first" hint) instead of switching.
- */
+@Composable
+private fun UploadOptionsTab(
+    contentPadding: PaddingValues,
+    selectionVersion: Int,
+    app: PackageInfoStruct,
+    snackbarHostState: SnackbarHostState,
+    initialSelectedPath: String?,
+    onSelection: (IconPackDrawable?, String?) -> Unit
+) {
+    Box(Modifier.fillMaxSize().padding(contentPadding)) {
+        key(selectionVersion) {
+            UploadColumn(
+                app = app,
+                snackbarHostState = snackbarHostState,
+                initialSelectedPath = initialSelectedPath,
+                onChange = onSelection
+            )
+        }
+    }
+}
+
+@Composable
+private fun ModifierOptionsTab(
+    contentPadding: PaddingValues,
+    source: Source,
+    imageEdit: ImageEdit,
+    iconColor: Color,
+    useVector: Boolean,
+    useMaterialYou: Boolean,
+    adjustments: AdjustmentState,
+    centerPreview: Bitmap?,
+    previewGenerating: Boolean,
+    sampleBitmap: Bitmap?,
+    previews: ModifierPreviews,
+    materialYouPackAdjustments: MaterialYouPackAdjustmentState?,
+    materialYouSchemes: List<Pair<Color, Color>>,
+    onImageEditChange: (ImageEdit) -> Unit,
+    onColorChange: (Color) -> Unit,
+    onVectorChange: (Boolean) -> Unit,
+    onMaterialYouChange: (Boolean) -> Unit,
+    onEditExternally: (Boolean) -> Unit
+) {
+    Box(Modifier.fillMaxSize().padding(contentPadding)) {
+        ModifierTab(
+            source = source,
+            imageEdit = imageEdit,
+            iconColor = iconColor,
+            useVector = useVector,
+            useMaterialYou = useMaterialYou,
+            adjustments = adjustments,
+            centerPreview = centerPreview,
+            previewGenerating = previewGenerating,
+            sampleBitmap = sampleBitmap,
+            previews = previews,
+            materialYouPackAdjustments = materialYouPackAdjustments,
+            materialYouSchemes = materialYouSchemes,
+            onImageEditChange = onImageEditChange,
+            onColorChange = onColorChange,
+            onVectorChange = onVectorChange,
+            onMaterialYouChange = onMaterialYouChange,
+            onEditExternally = onEditExternally
+        )
+    }
+}
+
+@Composable
+private fun VectorOptionsTab(
+    contentPadding: PaddingValues,
+    app: PackageInfoStruct,
+    state: VectorEditState,
+    onImportedImage: (OnlineImageImport, String) -> Unit,
+    onIconChange: (IconPackDrawable?) -> Unit
+) {
+    Box(Modifier.fillMaxSize().padding(contentPadding)) {
+        PrepareEditVector(
+            app = app,
+            state = state,
+            onImportedImage = onImportedImage,
+            onChange = onIconChange
+        )
+    }
+}
+
+private data class OptionsPreviewActions(
+    val onDismiss: () -> Unit,
+    val onClear: () -> Unit,
+    val onConfirm: () -> Unit
+)
+
+private data class PackBrowserChrome(
+    val visible: Boolean,
+    val expanded: Boolean,
+    val busy: Boolean,
+    val query: String,
+    val iconSortOrder: IconSortOrder,
+    val packSortOrder: PackSortOrder,
+    val onBack: () -> Unit,
+    val onQueryChange: (String) -> Unit,
+    val onIconSortChange: (IconSortOrder) -> Unit,
+    val onPackSortChange: (PackSortOrder) -> Unit
+)
+
+private data class CalendarSelection(
+    val visible: Boolean,
+    val packName: String,
+    val prefix: String,
+    val enabled: Boolean,
+    val onToggle: (Boolean) -> Unit
+)
+
+@Composable
+private fun WideOptionsLayout(
+    paneLayout: HorizontalPaneLayout,
+    preview: OptionsPreview,
+    actions: OptionsPreviewActions,
+    packBrowser: PackBrowserChrome,
+    calendar: CalendarSelection,
+    tabContent: @Composable (PaddingValues) -> Unit,
+    bottomSection: @Composable () -> Unit
+) {
+    Row(Modifier.fillMaxSize()) {
+        EditPreviewPane(
+            heroBitmap = preview.heroBitmap,
+            appName = preview.appName,
+            previewIcon = preview.icon,
+            previewLoading = preview.loading,
+            confirmEnabled = !preview.loading,
+            onDismiss = actions.onDismiss,
+            onClear = actions.onClear,
+            onConfirm = actions.onConfirm,
+            modifier = Modifier.width(paneLayout.leadingWidth),
+            extraCard = if (calendar.visible) {
+                {
+                    CalendarCard(
+                        packName = calendar.packName,
+                        calendarPrefix = calendar.prefix,
+                        calendarEnabled = calendar.enabled,
+                        onToggle = calendar.onToggle
+                    )
+                }
+            } else null
+        )
+        AdaptivePaneSeparator(paneLayout)
+        Column(Modifier.width(paneLayout.trailingWidth)) {
+            PackBrowserToolbar(packBrowser)
+            HorizontalDivider()
+            Box(Modifier.weight(1f)) { tabContent(PaddingValues(0.dp)) }
+            bottomSection()
+        }
+    }
+}
+
+@Composable
+private fun PhoneOptionsLayout(
+    selectedTab: Int,
+    preview: OptionsPreview,
+    actions: OptionsPreviewActions,
+    packBrowser: PackBrowserChrome,
+    calendar: CalendarSelection,
+    headerScrollBehavior: TopAppBarScrollBehavior,
+    labelExpand: Float,
+    tabContent: @Composable (PaddingValues) -> Unit,
+    bottomSection: @Composable () -> Unit
+) {
+    Column(Modifier.fillMaxSize()) {
+        OverlayHeaderLayout(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            header = {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                ) {
+                    ComparisonHeader(
+                        heroBitmap = preview.heroBitmap,
+                        appName = preview.appName,
+                        previewIcon = preview.icon,
+                        previewLoading = preview.loading,
+                        confirmEnabled = !preview.loading,
+                        onDismiss = actions.onDismiss,
+                        onClear = actions.onClear,
+                        onConfirm = actions.onConfirm,
+                        scrollBehavior = headerScrollBehavior,
+                        labelExpand = labelExpand,
+                        titleContent = if (packBrowser.visible) {
+                            {
+                                AppBarSearchField(
+                                    query = packBrowser.query,
+                                    onQueryChange = packBrowser.onQueryChange,
+                                    placeholder = stringResource(R.string.searchIcons)
+                                )
+                            }
+                        } else null,
+                        extraActions = if (packBrowser.visible) {
+                            {
+                                IconSortMenuButton(
+                                    sortOrder = packBrowser.iconSortOrder,
+                                    onSortOrderChange = packBrowser.onIconSortChange,
+                                    packSortOrder = packBrowser.packSortOrder,
+                                    onPackSortOrderChange = packBrowser.onPackSortChange
+                                )
+                            }
+                        } else null,
+                        onNavigateBack = {
+                            if (packBrowser.visible && packBrowser.expanded) {
+                                packBrowser.onBack()
+                            } else {
+                                actions.onDismiss()
+                            }
+                        },
+                        showProgress = packBrowser.visible && packBrowser.busy
+                    )
+                    if (selectedTab != 0) HorizontalDivider()
+                    AnimatedVisibility(visible = calendar.visible) {
+                        CalendarCard(
+                            packName = calendar.packName,
+                            calendarPrefix = calendar.prefix,
+                            calendarEnabled = calendar.enabled,
+                            onToggle = calendar.onToggle
+                        )
+                    }
+                }
+            }
+        ) { headerPadding ->
+            tabContent(headerPadding)
+        }
+        bottomSection()
+    }
+}
+
+@Composable
+private fun PackBrowserToolbar(packBrowser: PackBrowserChrome) {
+    if (!packBrowser.visible) return
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (packBrowser.expanded) {
+            IconButton(onClick = packBrowser.onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.dismiss)
+                )
+            }
+        }
+        Box(Modifier.weight(1f)) {
+            AppBarSearchField(
+                query = packBrowser.query,
+                onQueryChange = packBrowser.onQueryChange,
+                placeholder = stringResource(R.string.searchIcons)
+            )
+        }
+        IconSortMenuButton(
+            sortOrder = packBrowser.iconSortOrder,
+            onSortOrderChange = packBrowser.onIconSortChange,
+            packSortOrder = packBrowser.packSortOrder,
+            onPackSortOrderChange = packBrowser.onPackSortChange
+        )
+    }
+    if (packBrowser.busy) {
+        LinearProgressIndicator(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(3.dp)
+        )
+    }
+}
+
+
 @Composable
 private fun OptionsBottomBar(
     selectedTab: Int,
@@ -1149,8 +1264,6 @@ private fun OptionsBottomBar(
         NavigationBarItem(
             selected = selectedTab == 2,
             onClick = { if (modifierEnabled) onSelectTab(2) else onModifierBlocked() },
-            // When enabled, let NavigationBarItem apply its own selected/unselected colours
-            // (matching the other tabs); only override when disabled
             icon = {
                 if (modifierEnabled) {
                     Icon(Icons.Filled.Tune, null)
