@@ -785,7 +785,6 @@ fun OptionsDialog(
                             1 -> UploadOptionsTab(
                                 contentPadding = headerPadding,
                                 selectionVersion = uploadSelectionVersion,
-                                app = app,
                                 snackbarHostState = snackbarHostState,
                                 initialSelectedPath = onlineImagePath,
                                 onSelection = { icon, path ->
@@ -964,7 +963,6 @@ private data class OptionsPreview(
 private fun UploadOptionsTab(
     contentPadding: PaddingValues,
     selectionVersion: Int,
-    app: PackageInfoStruct,
     snackbarHostState: SnackbarHostState,
     initialSelectedPath: String?,
     onSelection: (IconPackDrawable?, String?) -> Unit
@@ -972,7 +970,6 @@ private fun UploadOptionsTab(
     Box(Modifier.fillMaxSize().padding(contentPadding)) {
         key(selectionVersion) {
             UploadColumn(
-                app = app,
                 snackbarHostState = snackbarHostState,
                 initialSelectedPath = initialSelectedPath,
                 onChange = onSelection
