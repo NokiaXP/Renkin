@@ -47,7 +47,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -905,13 +904,20 @@ fun GlobalOptionsScreen(onClose: (editedKeys: Set<String>, applied: Boolean) -> 
                 }
             }
 
-            val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600
-            if (wide) {
+            val adaptiveLayoutInfo = LocalAdaptiveLayoutInfo.current
+            val paneLayout = horizontalPaneLayout(
+                availableWidth = adaptiveLayoutInfo.windowWidth,
+                preferredLeadingWidth = 360.dp,
+                minimumLeadingWidth = 320.dp,
+                minimumTrailingWidth = 360.dp,
+                separatingVerticalHinge = adaptiveLayoutInfo.separatingVerticalHinge
+            )
+            if (paneLayout != null) {
                 Row(Modifier.fillMaxSize()) {
                     Surface(
                         color = MaterialTheme.colorScheme.surfaceContainerLow,
                         modifier = Modifier
-                            .width(360.dp)
+                            .width(paneLayout.leadingWidth)
                             .fillMaxHeight()
                     ) {
                         Box(Modifier.fillMaxSize()) {
@@ -939,8 +945,8 @@ fun GlobalOptionsScreen(onClose: (editedKeys: Set<String>, applied: Boolean) -> 
                             )
                         }
                     }
-                    VerticalDivider()
-                    Column(Modifier.weight(1f)) {
+                    AdaptivePaneSeparator(paneLayout)
+                    Column(Modifier.width(paneLayout.trailingWidth)) {
                         PreviewModeBar(showBefore) { showBefore = it }
                         currentSection?.let { section ->
                             CurrentSectionBar(

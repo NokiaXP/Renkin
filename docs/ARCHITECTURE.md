@@ -172,9 +172,9 @@ identically and none of them re-implements the maths.
   regeneration and rescaling. `ImageEdit.COLORIZE_SEGMENTS` stacks `SegmentLayer`s — each layer's
   picker shows the output of the layers before it, and generation matches against that same
   accumulated image so the stored colours describe exactly what the user selected.
-- **Wide screens**: `WIDE_LAYOUT_DP` (600) switches the sheet and the segment picker to
-  side-by-side panes. Same breakpoint idea as `WatchRuleEditor`, but orientation-independent so
-  a tablet held upright benefits too.
+- **Adaptive panes**: `ProvideAdaptiveLayoutInfo` supplies current WindowMetrics and a separating
+  vertical fold. Pane layouts switch only when both sides meet their content-specific minimum
+  width; nested editors such as the segment picker decide from their actual container width.
 - Preferences carry gradients as comma-separated ARGB (`COLORIZER_GRADIENT_COLORS`, and the
   outline's own `OUTLINE_GRADIENT_*` keys); the pre-gradient single-colour keys are still written
   so older builds and older backups keep working.

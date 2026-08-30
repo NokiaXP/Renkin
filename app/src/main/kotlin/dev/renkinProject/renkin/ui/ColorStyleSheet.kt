@@ -33,7 +33,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.ModalBottomSheet
@@ -60,7 +59,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -115,7 +113,14 @@ internal fun ColorStyleSheet(
     var galleryOpen by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    val wide = LocalConfiguration.current.screenWidthDp >= WIDE_LAYOUT_DP
+    val adaptiveLayoutInfo = LocalAdaptiveLayoutInfo.current
+    val paneLayout = horizontalPaneLayout(
+        availableWidth = adaptiveLayoutInfo.windowWidth,
+        preferredLeadingWidth = WidePreviewPaneWidth,
+        minimumLeadingWidth = 220.dp,
+        minimumTrailingWidth = 360.dp,
+        separatingVerticalHinge = adaptiveLayoutInfo.separatingVerticalHinge
+    )
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -131,12 +136,11 @@ internal fun ColorStyleSheet(
                     showSingleColorEffects = showSingleColorEffects
                 )
             }
-            if (wide) {
+            if (paneLayout != null) {
                 // Wide screens: the preview sits beside the controls, big enough to judge, and
                 // the controls keep a phone-like column width instead of stretching across.
                 Row(
                     modifier = Modifier.weight(1f, fill = false),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     ColorStyleSheetHeader(
                         title = title,
@@ -144,12 +148,12 @@ internal fun ColorStyleSheet(
                         style = draft,
                         renderPreview = renderPreview,
                         vertical = true,
-                        modifier = Modifier.width(WidePreviewPaneWidth)
+                        modifier = Modifier.width(paneLayout.leadingWidth)
                     )
-                    VerticalDivider()
+                    AdaptivePaneSeparator(paneLayout)
                     Column(
                         modifier = Modifier
-                            .weight(1f)
+                            .width(paneLayout.trailingWidth)
                             .verticalScroll(rememberScrollState())
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),

@@ -76,8 +76,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.VerticalDivider
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
@@ -659,10 +657,14 @@ fun OptionsDialog(
         onConfirm(draft.iconToConfirm, calendarEnabled, calendarPrefix, calendarPackName, sourcePackToPersist, sourceUrlToPersist)
     }
 
-    // Tablets / unfolded foldables (and landscape phones): two panes — persistent preview
-    // pane left, tabs right — instead of the collapsing phone header. Same threshold as the
-    // wide ComparisonHeader and Global options.
-    val wideLayout = LocalConfiguration.current.screenWidthDp >= 600
+    val adaptiveLayoutInfo = LocalAdaptiveLayoutInfo.current
+    val paneLayout = horizontalPaneLayout(
+        availableWidth = adaptiveLayoutInfo.windowWidth,
+        preferredLeadingWidth = 320.dp,
+        minimumLeadingWidth = 280.dp,
+        minimumTrailingWidth = 360.dp,
+        separatingVerticalHinge = adaptiveLayoutInfo.separatingVerticalHinge
+    )
 
     Dialog(
         onDismissRequest = startClose,
@@ -692,9 +694,9 @@ fun OptionsDialog(
                     .fillMaxSize()
                     .statusBarsPadding()
                     .then(
-                        // The collapsing header exists only in the phone layout; the wide
-                        // layout's chrome is static, so no scroll connection to feed.
-                        if (wideLayout) Modifier
+                        // A short-window Modifier tab needs every drag for its dense form;
+                        // letting the header pre-consume it can leave the form immovable.
+                        if (paneLayout != null || selectedTab == 2) Modifier
                         else Modifier.nestedScroll(headerScrollBehavior.nestedScrollConnection)
                     )
             ) {
@@ -930,7 +932,7 @@ fun OptionsDialog(
                     )
                 }
 
-                if (wideLayout) {
+                if (paneLayout != null) {
                     // Tablets / unfolded foldables: persistent preview pane (big live New
                     // preview + always-visible Apply) left, the tabs at full height right.
                     Row(Modifier.fillMaxSize()) {
@@ -943,7 +945,7 @@ fun OptionsDialog(
                             onDismiss = startClose,
                             onClear = { showConfirmClear = true },
                             onConfirm = confirmIcon,
-                            modifier = Modifier.width(320.dp),
+                            modifier = Modifier.width(paneLayout.leadingWidth),
                             extraCard = if (selectedTab == 0 && source == Source.ICON_PACK && calendarPrefix != null) {
                                 {
                                     CalendarCard(
@@ -955,8 +957,8 @@ fun OptionsDialog(
                                 }
                             } else null
                         )
-                        VerticalDivider()
-                        Column(Modifier.weight(1f)) {
+                        AdaptivePaneSeparator(paneLayout)
+                        Column(Modifier.width(paneLayout.trailingWidth)) {
                             // The pack browser's chrome moves atop the right pane: back arrow
                             // (inside a pack), inline search and the sort menu.
                             if (packBrowsing) {

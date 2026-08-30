@@ -37,6 +37,7 @@ import dev.renkinProject.renkin.packages.PackageInfoStruct
 import dev.renkinProject.renkin.ui.GlobalOptionsScreen
 import dev.renkinProject.renkin.ui.LocalToaster
 import dev.renkinProject.renkin.ui.ProvideColorPresets
+import dev.renkinProject.renkin.ui.ProvideAdaptiveLayoutInfo
 import dev.renkinProject.renkin.ui.ProvideModifierPresets
 import dev.renkinProject.renkin.ui.ToastHost
 import dev.renkinProject.renkin.ui.Toaster
@@ -120,31 +121,33 @@ class GlobalOptionsActivity : ComponentActivity() {
                 viewModel.toastEvents.collect { resId -> toaster.show(getString(resId)) }
             }
 
-            CompositionLocalProvider(LocalToaster provides toaster) {
-                ProvideColorPresets(
-                    presets = colorPresets,
-                    onSave = viewModel::saveColorPreset,
-                    onDelete = viewModel::deleteColorPreset
-                ) {
-                    ProvideModifierPresets(
-                        presets = modifierPresets,
-                        onSave = viewModel::saveModifierPreset,
-                        onUpdate = viewModel::updateModifierPreset,
-                        onRename = viewModel::renameModifierPreset,
-                        onMarkUsed = viewModel::markModifierPresetUsed,
-                        onDelete = viewModel::deleteModifierPreset
+            ProvideAdaptiveLayoutInfo(this@GlobalOptionsActivity) {
+                CompositionLocalProvider(LocalToaster provides toaster) {
+                    ProvideColorPresets(
+                        presets = colorPresets,
+                        onSave = viewModel::saveColorPreset,
+                        onDelete = viewModel::deleteColorPreset
                     ) {
-                        RenkinTheme(darkMode) {
-                            GlobalOptionsScreen(onClose = { editedKeys, applied ->
-                                setResult(
-                                    RESULT_OK,
-                                    Intent()
-                                        .putStringArrayListExtra(EXTRA_EDITED_KEYS, ArrayList(editedKeys))
-                                        .putExtra(EXTRA_GLOBAL_APPLIED, applied)
-                                )
-                                finish()
-                            })
-                            ToastHost(toaster)
+                        ProvideModifierPresets(
+                            presets = modifierPresets,
+                            onSave = viewModel::saveModifierPreset,
+                            onUpdate = viewModel::updateModifierPreset,
+                            onRename = viewModel::renameModifierPreset,
+                            onMarkUsed = viewModel::markModifierPresetUsed,
+                            onDelete = viewModel::deleteModifierPreset
+                        ) {
+                            RenkinTheme(darkMode) {
+                                GlobalOptionsScreen(onClose = { editedKeys, applied ->
+                                    setResult(
+                                        RESULT_OK,
+                                        Intent()
+                                            .putStringArrayListExtra(EXTRA_EDITED_KEYS, ArrayList(editedKeys))
+                                            .putExtra(EXTRA_GLOBAL_APPLIED, applied)
+                                    )
+                                    finish()
+                                })
+                                ToastHost(toaster)
+                            }
                         }
                     }
                 }
