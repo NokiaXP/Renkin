@@ -34,6 +34,7 @@ internal data class ModifierPreviews(
     /** Remove-background output before scale, position, shape and outline alter its coordinates. */
     val backgroundBrush: suspend () -> Bitmap?,
     val colorize: suspend (ColorizerStyle) -> Bitmap?,
+    val shape: suspend (ColorizerStyle) -> Bitmap?,
     val outline: suspend (ColorizerStyle) -> Bitmap?,
     /** Current icon rendered with a reusable preset substituted into its source-specific options. */
     val preset: suspend (ModifierPresetPayload) -> Bitmap?,
@@ -112,6 +113,9 @@ internal fun rememberModifierPreviews(
             },
             colorize = { style ->
                 currentRender(currentOptions.withColorizerStyle(style))
+            },
+            shape = { style ->
+                currentRender(currentOptions.withShapeStyle(style))
             },
             outline = { style ->
                 currentRender(
@@ -244,4 +248,9 @@ internal fun GenerationOptions.withColorizerStyle(style: ColorizerStyle): Genera
     colorizerGradientPositions = style.gradientPositions,
     colorizerGradientAngle = style.gradientAngle,
     colorizeLayers = emptyList()
+)
+
+internal fun GenerationOptions.withShapeStyle(style: ColorizerStyle): GenerationOptions = copy(
+    bgColor = style.firstColor,
+    backgroundStyle = style
 )

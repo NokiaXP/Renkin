@@ -431,8 +431,6 @@ internal fun ModifierTab(
     val editLabels = getImageEditLabels(includeSegments = colorizeBaseBitmap != null)
     var colorPickerOpen by remember { mutableStateOf(false) }
     var colorizeSheetOpen by rememberSaveable { mutableStateOf(false) }
-    var outlineSheetOpen by rememberSaveable { mutableStateOf(false) }
-    var shapeColorPickerOpen by remember { mutableStateOf(false) }
     var eraseDialogOpen by remember { mutableStateOf(false) }
     var backgroundBrushDialogOpen by remember { mutableStateOf(false) }
     var backgroundBrushPreview by remember { mutableStateOf<Bitmap?>(null) }
@@ -441,9 +439,6 @@ internal fun ModifierTab(
     val scrollState = rememberScrollState()
     val scrollScope = rememberCoroutineScope()
     val presetScrollAnchor = remember { PresetScrollAnchor() }
-    val context = LocalContext.current
-    val toolboxInstalled = remember { imageToolboxInstalled(context) }
-
     // Brush coordinates belong to the image-edit stage. Rendering the final, transformed icon
     // here would make strokes miss whenever Scale, Position, Shape or Outline is active.
     LaunchedEffect(backgroundBrushDialogOpen, adjustments.backgroundBrushStrokes, previews) {
@@ -467,70 +462,13 @@ internal fun ModifierTab(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        if (materialYouPackAdjustments != null) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = stringResource(R.string.variantMaterialYou),
-                    style = MaterialTheme.typography.titleSmallEmphasized,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f)
-                )
-                if (materialYouPackAdjustments.selectedScheme >= 0 ||
-                    materialYouPackAdjustments.strokeScale != 1f
-                ) {
-                    TextButton(onClick = materialYouPackAdjustments::reset) {
-                        Text(stringResource(R.string.resetToDefault))
-                    }
-                }
-            }
-            Surface(
-                shape = CardShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    MaterialYouColorControls(
-                        schemes = materialYouSchemes,
-                        selectedScheme = materialYouPackAdjustments.selectedScheme,
-                        onSchemeChange = { materialYouPackAdjustments.selectedScheme = it },
-                        customForeground = materialYouPackAdjustments.customForeground,
-                        customBackground = materialYouPackAdjustments.customBackground,
-                        onCustomForegroundChange = {
-                            materialYouPackAdjustments.customForeground = it
-                        },
-                        onCustomBackgroundChange = {
-                            materialYouPackAdjustments.customBackground = it
-                        },
-                        renderForeground = previews?.materialYouPackForeground,
-                        renderBackground = previews?.materialYouPackBackground,
-                        allowOriginal = true,
-                        sampleBitmap = sampleBitmap
-                    )
-                    LabeledSlider(
-                        label = stringResource(R.string.lineThickness),
-                        value = lineWeightToCenteredSlider(
-                            materialYouPackAdjustments.strokeScale
-                        ),
-                        onValueChange = {
-                            materialYouPackAdjustments.strokeScale =
-                                centeredSliderToLineWeight(it)
-                        },
-                        valueRange = 0f..2f,
-                        centered = true,
-                        ruler = percentRuler(
-                            valueRange = 0.5f..2f,
-                            toRulerValue = ::centeredSliderToLineWeight,
-                            fromRulerValue = ::lineWeightToCenteredSlider
-                        )
-                    )
-                }
-            }
+        materialYouPackAdjustments?.let {
+            MaterialYouPackSection(
+                adjustments = it,
+                schemes = materialYouSchemes,
+                previews = previews,
+                sampleBitmap = sampleBitmap
+            )
         }
 
         Text(
@@ -539,9 +477,6 @@ internal fun ModifierTab(
             color = MaterialTheme.colorScheme.onSurface
         )
 
-        // Compact icon tiles instead of five stacked full-width cards: every modifier gets a
-        // glyph and the selection stands out with a primary border — the same visual language
-        // as the Icon shape picker below and the watch editor's tiles.
         editLabels.entries.toList().chunked(3).forEach { rowEdits ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -591,7 +526,6 @@ internal fun ModifierTab(
             }
         }
 
-        // The chosen modifier's own controls live in one envelope card under the grid.
         androidx.compose.animation.AnimatedVisibility(visible = imageEdit != ImageEdit.NONE) {
             Surface(
                 shape = CardShape,
@@ -775,278 +709,22 @@ internal fun ModifierTab(
             }
         }
 
-        // Per-icon adjustments, independent of the modifier chosen above
-        Text(
-            text = stringResource(R.string.adjustments),
-            style = MaterialTheme.typography.titleSmallEmphasized,
-            color = MaterialTheme.colorScheme.onSurface
+        IconAdjustmentsSection(
+            adjustments = adjustments,
+            onOpenPosition = { centerDialogOpen = true }
         )
-        OptionGroup {
-            // Range centred on 1.0: left shrinks (padding), right enlarges (zoom).
-            LabeledSlider(
-                label = stringResource(R.string.iconScale),
-                value = adjustments.iconScale,
-                onValueChange = { adjustments.iconScale = it },
-                valueRange = 0.5f..1.5f,
-                centered = true,
-                ruler = percentRuler()
-            )
-        }
-        // Position under scale as its own card — related tools, separate controls.
-        OptionCard(
-            label = stringResource(R.string.position),
-            onClick = { centerDialogOpen = true },
-            trailing = {
-                val adjusted = adjustments.iconOffsetX != 0f || adjustments.iconOffsetY != 0f
-                Text(
-                    text = if (adjusted) stringResource(R.string.positionCustom) else stringResource(R.string.positionDefault),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
+        IconShapeSection(
+            adjustments = adjustments,
+            sampleBitmap = sampleBitmap,
+            renderPreview = previews?.shape
         )
-
-        // Icon shape: laid on a coloured plate or cropping the icon itself, drawn with the
-        // same Material You shape presets launchers use.
-        Text(
-            text = stringResource(R.string.iconShapeTitle),
-            style = MaterialTheme.typography.titleSmallEmphasized,
-            color = MaterialTheme.colorScheme.onSurface
+        OutlineSection(
+            adjustments = adjustments,
+            sampleBitmap = sampleBitmap,
+            renderPreview = previews?.outline,
+            onOpenEraser = { eraseDialogOpen = true }
         )
-        OptionGroup {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                IconShape.entries.forEach { shape ->
-                    ShapeSwatch(
-                        shape = shape,
-                        selected = adjustments.iconShape == shape,
-                        onClick = { adjustments.iconShape = shape }
-                    )
-                }
-            }
-            androidx.compose.animation.AnimatedVisibility(visible = adjustments.iconShape != IconShape.NONE) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    // Crop first — most icons are full-bleed, so cropping is the common case.
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = adjustments.shapeCrop,
-                            onClick = { adjustments.shapeCrop = true },
-                            label = { Text(stringResource(R.string.shapeCrop)) }
-                        )
-                        FilterChip(
-                            selected = !adjustments.shapeCrop,
-                            onClick = { adjustments.shapeCrop = false },
-                            label = { Text(stringResource(R.string.shapePlate)) }
-                        )
-                    }
-                    // Scales the shape itself (the icon stays as-is — that's Icon scale above):
-                    // smaller crops deeper into the icon, larger clips just the corners.
-                    LabeledSlider(
-                        label = stringResource(R.string.shapeIconScale),
-                        value = adjustments.shapeScale,
-                        onValueChange = { adjustments.shapeScale = it },
-                        valueRange = 0.5f..1.5f,
-                        centered = true,
-                        ruler = percentRuler()
-                    )
-                    if (!adjustments.shapeCrop) {
-                        val shapeStyle = ColorizerStyle(
-                            mode = adjustments.shapeColorizerMode,
-                            gradientType = adjustments.shapeGradientType,
-                            firstColor = adjustments.shapeColor.toArgb(),
-                            gradientStops = adjustments.shapeGradientColors,
-                            gradientPositions = adjustments.shapeGradientPositions,
-                            gradientAngle = adjustments.shapeGradientAngle
-                        )
-                        ColorStyleCard(
-                            label = stringResource(R.string.shapeColor),
-                            style = shapeStyle,
-                            onClick = { shapeColorPickerOpen = true }
-                        )
-                        if (shapeColorPickerOpen) {
-                            ColorStyleSheet(
-                                title = stringResource(R.string.shapeColor),
-                                initialStyle = shapeStyle,
-                                sampleBitmap = sampleBitmap,
-                                // The plate is a fill behind the icon, so the artwork switches
-                                // have nothing to act on here.
-                                showSingleColorEffects = false,
-                                onDismiss = { shapeColorPickerOpen = false },
-                                onApply = { style ->
-                                    adjustments.shapeColorizerMode = style.mode
-                                    adjustments.shapeGradientType = style.gradientType
-                                    adjustments.shapeColor = Color(style.firstColor)
-                                    adjustments.shapeGradientColors = style.gradientStops
-                                    adjustments.shapeGradientPositions = style.gradientPositions
-                                    adjustments.shapeGradientAngle = style.gradientAngle
-                                    shapeColorPickerOpen = false
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Outline: a contour around the icon's silhouette (Add), or a repaint of the ring the
-        // icon already carries (Recolor) — the shape crop above still applies afterwards.
-        Text(
-            text = stringResource(R.string.outlineTitle),
-            style = MaterialTheme.typography.titleSmallEmphasized,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        OptionGroup {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = adjustments.outlineMode == OutlineMode.NONE,
-                    onClick = { adjustments.outlineMode = OutlineMode.NONE },
-                    label = { Text(stringResource(R.string.outlineNone)) }
-                )
-                FilterChip(
-                    selected = adjustments.outlineMode == OutlineMode.ADD,
-                    onClick = { adjustments.outlineMode = OutlineMode.ADD },
-                    label = { Text(stringResource(R.string.outlineAdd)) }
-                )
-                FilterChip(
-                    selected = adjustments.outlineMode == OutlineMode.RECOLOR,
-                    onClick = { adjustments.outlineMode = OutlineMode.RECOLOR },
-                    label = { Text(stringResource(R.string.outlineRecolor)) }
-                )
-            }
-            androidx.compose.animation.AnimatedVisibility(visible = adjustments.outlineMode != OutlineMode.NONE) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    // Recolor finds the outline's extent by colour, so thickness only applies to Add.
-                    if (adjustments.outlineMode == OutlineMode.ADD) {
-                        LabeledSlider(
-                            label = stringResource(R.string.outlineThickness),
-                            value = adjustments.outlineWidth,
-                            onValueChange = { adjustments.outlineWidth = it },
-                            valueRange = 1f..16f,
-                            ruler = pixelRuler()
-                        )
-                    }
-                    val outlineStyle = ColorizerStyle(
-                        mode = adjustments.outlineColorizerMode,
-                        gradientType = adjustments.outlineGradientType,
-                        firstColor = adjustments.outlineColor.toArgb(),
-                        gradientStops = adjustments.outlineGradientColors,
-                        gradientPositions = adjustments.outlineGradientPositions,
-                        gradientAngle = adjustments.outlineGradientAngle
-                    )
-                    ColorStyleCard(
-                        label = stringResource(R.string.outlineColor),
-                        style = outlineStyle,
-                        onClick = { outlineSheetOpen = true }
-                    )
-                    if (outlineSheetOpen) {
-                        ColorStyleSheet(
-                            title = stringResource(R.string.outlineColor),
-                            initialStyle = outlineStyle,
-                            sampleBitmap = sampleBitmap,
-                            // Solid fill / monochrome / inverse describe the icon's fill, not a
-                            // contour, so the outline sheet omits them.
-                            showSingleColorEffects = false,
-                            renderPreview = previews?.outline,
-                            onDismiss = { outlineSheetOpen = false },
-                            onApply = { style ->
-                                adjustments.outlineColorizerMode = style.mode
-                                adjustments.outlineGradientType = style.gradientType
-                                adjustments.outlineColor = Color(style.firstColor)
-                                adjustments.outlineGradientColors = style.gradientStops
-                                adjustments.outlineGradientPositions = style.gradientPositions
-                                adjustments.outlineGradientAngle = style.gradientAngle
-                                outlineSheetOpen = false
-                            }
-                        )
-                    }
-                    // Eraser: paint the areas the outline must skip (per app, session-only).
-                    OptionCard(
-                        label = stringResource(R.string.eraseTitle),
-                        onClick = { eraseDialogOpen = true },
-                        trailing = {
-                            Text(
-                                text = if (adjustments.eraseStrokes.isEmpty()) stringResource(R.string.positionDefault)
-                                    else stringResource(R.string.eraseCount, adjustments.eraseStrokes.size),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    )
-                }
-            }
-        }
-
-        // External editor hand-off, at the end: the in-app tools above come first. A split button:
-        // the main action opens ImageToolbox (or its Play Store page when not installed), the arrow
-        // reveals "Edit in another app". The edited image comes back via "share to Renkin" into the
-        // Upload tab.
-        Text(
-            text = stringResource(R.string.externalEditorTitle),
-            style = MaterialTheme.typography.titleSmallEmphasized,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(top = 8.dp)
-        )
-        var editorMenuOpen by remember { mutableStateOf(false) }
-        val expandedDescription = stringResource(R.string.stateExpanded)
-        val collapsedDescription = stringResource(R.string.stateCollapsed)
-        Box(Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp)) {
-            SplitButtonLayout(
-                leadingButton = {
-                    SplitButtonDefaults.LeadingButton(
-                        onClick = {
-                            if (toolboxInstalled) onEditExternally(true)
-                            else openImageToolboxStore(context)
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                            contentDescription = null,
-                            modifier = Modifier.size(SplitButtonDefaults.LeadingIconSize)
-                        )
-                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                        Text(
-                            text = if (toolboxInstalled) stringResource(R.string.openInImageToolbox)
-                                else stringResource(R.string.installImageToolbox)
-                        )
-                    }
-                },
-                trailingButton = {
-                    // The menu anchors on the trailing button itself (not the whole split
-                    // button), so it opens at the chevron — above it when the button sits at
-                    // the bottom of the screen — instead of drifting to the far left edge.
-                    Box {
-                        SplitButtonDefaults.TrailingButton(
-                            checked = editorMenuOpen,
-                            onCheckedChange = { editorMenuOpen = it },
-                            modifier = Modifier.semantics {
-                                stateDescription = if (editorMenuOpen) expandedDescription
-                                    else collapsedDescription
-                            }
-                        ) {
-                            val rotation by animateFloatAsState(if (editorMenuOpen) 180f else 0f, label = "chevron")
-                            Icon(
-                                imageVector = Icons.Filled.KeyboardArrowDown,
-                                contentDescription = stringResource(R.string.editInAnotherApp),
-                                modifier = Modifier
-                                    .size(SplitButtonDefaults.TrailingIconSize)
-                                    .graphicsLayer { rotationZ = rotation }
-                            )
-                        }
-                        DropdownMenu(expanded = editorMenuOpen, onDismissRequest = { editorMenuOpen = false }) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.editInAnotherApp)) },
-                                onClick = {
-                                    editorMenuOpen = false
-                                    onEditExternally(false)
-                                }
-                            )
-                        }
-                    }
-                }
-            )
-        }
+        ExternalEditorSection(onEditExternally)
 
         // Presets close the tab: everything above is what a preset can capture, and loading one
         // rewrites those blocks in place. Only the tab's own Apply then touches the icon.
@@ -1088,35 +766,436 @@ internal fun ModifierTab(
         )
     }
 
+    ModifierDialogHost(
+        colorPickerOpen = colorPickerOpen,
+        centerDialogOpen = centerDialogOpen,
+        eraseDialogOpen = eraseDialogOpen,
+        backgroundBrushDialogOpen = backgroundBrushDialogOpen,
+        iconColor = iconColor,
+        sampleBitmap = sampleBitmap,
+        centerPreview = centerPreview,
+        adjustments = adjustments,
+        previews = previews,
+        previewGenerating = previewGenerating,
+        backgroundBrushPreview = backgroundBrushPreview,
+        backgroundBrushPreviewGenerating = backgroundBrushPreviewGenerating,
+        onColorChange = onColorChange,
+        onCloseColorPicker = { colorPickerOpen = false },
+        onCloseCenter = { centerDialogOpen = false },
+        onCloseEraser = { eraseDialogOpen = false },
+        onCloseBackgroundBrush = { backgroundBrushDialogOpen = false }
+    )
+}
+
+@Composable
+private fun MaterialYouPackSection(
+    adjustments: MaterialYouPackAdjustmentState,
+    schemes: List<Pair<Color, Color>>,
+    previews: ModifierPreviews?,
+    sampleBitmap: Bitmap?
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = stringResource(R.string.variantMaterialYou),
+            style = MaterialTheme.typography.titleSmallEmphasized,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
+        )
+        if (adjustments.selectedScheme >= 0 || adjustments.strokeScale != 1f) {
+            TextButton(onClick = adjustments::reset) {
+                Text(stringResource(R.string.resetToDefault))
+            }
+        }
+    }
+    Surface(
+        shape = CardShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            MaterialYouColorControls(
+                schemes = schemes,
+                selectedScheme = adjustments.selectedScheme,
+                onSchemeChange = { adjustments.selectedScheme = it },
+                customForeground = adjustments.customForeground,
+                customBackground = adjustments.customBackground,
+                onCustomForegroundChange = { adjustments.customForeground = it },
+                onCustomBackgroundChange = { adjustments.customBackground = it },
+                renderForeground = previews?.materialYouPackForeground,
+                renderBackground = previews?.materialYouPackBackground,
+                allowOriginal = true,
+                sampleBitmap = sampleBitmap
+            )
+            LabeledSlider(
+                label = stringResource(R.string.lineThickness),
+                value = lineWeightToCenteredSlider(adjustments.strokeScale),
+                onValueChange = {
+                    adjustments.strokeScale = centeredSliderToLineWeight(it)
+                },
+                valueRange = 0f..2f,
+                centered = true,
+                ruler = percentRuler(
+                    valueRange = 0.5f..2f,
+                    toRulerValue = ::centeredSliderToLineWeight,
+                    fromRulerValue = ::lineWeightToCenteredSlider
+                )
+            )
+        }
+    }
+}
+
+@Composable
+private fun IconAdjustmentsSection(
+    adjustments: AdjustmentState,
+    onOpenPosition: () -> Unit
+) {
+    Text(
+        text = stringResource(R.string.adjustments),
+        style = MaterialTheme.typography.titleSmallEmphasized,
+        color = MaterialTheme.colorScheme.onSurface
+    )
+    OptionGroup {
+        LabeledSlider(
+            label = stringResource(R.string.iconScale),
+            value = adjustments.iconScale,
+            onValueChange = { adjustments.iconScale = it },
+            valueRange = 0.5f..1.5f,
+            centered = true,
+            ruler = percentRuler()
+        )
+    }
+    OptionCard(
+        label = stringResource(R.string.position),
+        onClick = onOpenPosition,
+        trailing = {
+            val adjusted = adjustments.iconOffsetX != 0f || adjustments.iconOffsetY != 0f
+            Text(
+                text = if (adjusted) {
+                    stringResource(R.string.positionCustom)
+                } else {
+                    stringResource(R.string.positionDefault)
+                },
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    )
+}
+
+@Composable
+private fun IconShapeSection(
+    adjustments: AdjustmentState,
+    sampleBitmap: Bitmap?,
+    renderPreview: (suspend (ColorizerStyle) -> Bitmap?)?
+) {
+    var colorSheetOpen by remember { mutableStateOf(false) }
+
+    Text(
+        text = stringResource(R.string.iconShapeTitle),
+        style = MaterialTheme.typography.titleSmallEmphasized,
+        color = MaterialTheme.colorScheme.onSurface
+    )
+    OptionGroup {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            IconShape.entries.forEach { shape ->
+                ShapeSwatch(
+                    shape = shape,
+                    selected = adjustments.iconShape == shape,
+                    onClick = { adjustments.iconShape = shape }
+                )
+            }
+        }
+        androidx.compose.animation.AnimatedVisibility(visible = adjustments.iconShape != IconShape.NONE) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = adjustments.shapeCrop,
+                        onClick = { adjustments.shapeCrop = true },
+                        label = { Text(stringResource(R.string.shapeCrop)) }
+                    )
+                    FilterChip(
+                        selected = !adjustments.shapeCrop,
+                        onClick = { adjustments.shapeCrop = false },
+                        label = { Text(stringResource(R.string.shapePlate)) }
+                    )
+                }
+                LabeledSlider(
+                    label = stringResource(R.string.shapeIconScale),
+                    value = adjustments.shapeScale,
+                    onValueChange = { adjustments.shapeScale = it },
+                    valueRange = 0.5f..1.5f,
+                    centered = true,
+                    ruler = percentRuler()
+                )
+                if (!adjustments.shapeCrop) {
+                    val shapeStyle = ColorizerStyle(
+                        mode = adjustments.shapeColorizerMode,
+                        gradientType = adjustments.shapeGradientType,
+                        firstColor = adjustments.shapeColor.toArgb(),
+                        gradientStops = adjustments.shapeGradientColors,
+                        gradientPositions = adjustments.shapeGradientPositions,
+                        gradientAngle = adjustments.shapeGradientAngle
+                    )
+                    ColorStyleCard(
+                        label = stringResource(R.string.shapeColor),
+                        style = shapeStyle,
+                        onClick = { colorSheetOpen = true }
+                    )
+                    if (colorSheetOpen) {
+                        ColorStyleSheet(
+                            title = stringResource(R.string.shapeColor),
+                            initialStyle = shapeStyle,
+                            sampleBitmap = sampleBitmap,
+                            renderPreview = renderPreview,
+                            showSingleColorEffects = false,
+                            onDismiss = { colorSheetOpen = false },
+                            onApply = { style ->
+                                adjustments.shapeColorizerMode = style.mode
+                                adjustments.shapeGradientType = style.gradientType
+                                adjustments.shapeColor = Color(style.firstColor)
+                                adjustments.shapeGradientColors = style.gradientStops
+                                adjustments.shapeGradientPositions = style.gradientPositions
+                                adjustments.shapeGradientAngle = style.gradientAngle
+                                colorSheetOpen = false
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OutlineSection(
+    adjustments: AdjustmentState,
+    sampleBitmap: Bitmap?,
+    renderPreview: (suspend (ColorizerStyle) -> Bitmap?)?,
+    onOpenEraser: () -> Unit
+) {
+    var colorSheetOpen by rememberSaveable { mutableStateOf(false) }
+
+    Text(
+        text = stringResource(R.string.outlineTitle),
+        style = MaterialTheme.typography.titleSmallEmphasized,
+        color = MaterialTheme.colorScheme.onSurface
+    )
+    OptionGroup {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlineMode.entries.forEach { mode ->
+                FilterChip(
+                    selected = adjustments.outlineMode == mode,
+                    onClick = { adjustments.outlineMode = mode },
+                    label = {
+                        Text(
+                            stringResource(
+                                when (mode) {
+                                    OutlineMode.NONE -> R.string.outlineNone
+                                    OutlineMode.ADD -> R.string.outlineAdd
+                                    OutlineMode.RECOLOR -> R.string.outlineRecolor
+                                }
+                            )
+                        )
+                    }
+                )
+            }
+        }
+        androidx.compose.animation.AnimatedVisibility(visible = adjustments.outlineMode != OutlineMode.NONE) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (adjustments.outlineMode == OutlineMode.ADD) {
+                    LabeledSlider(
+                        label = stringResource(R.string.outlineThickness),
+                        value = adjustments.outlineWidth,
+                        onValueChange = { adjustments.outlineWidth = it },
+                        valueRange = 1f..16f,
+                        ruler = pixelRuler()
+                    )
+                }
+                val outlineStyle = ColorizerStyle(
+                    mode = adjustments.outlineColorizerMode,
+                    gradientType = adjustments.outlineGradientType,
+                    firstColor = adjustments.outlineColor.toArgb(),
+                    gradientStops = adjustments.outlineGradientColors,
+                    gradientPositions = adjustments.outlineGradientPositions,
+                    gradientAngle = adjustments.outlineGradientAngle
+                )
+                ColorStyleCard(
+                    label = stringResource(R.string.outlineColor),
+                    style = outlineStyle,
+                    onClick = { colorSheetOpen = true }
+                )
+                if (colorSheetOpen) {
+                    ColorStyleSheet(
+                        title = stringResource(R.string.outlineColor),
+                        initialStyle = outlineStyle,
+                        sampleBitmap = sampleBitmap,
+                        showSingleColorEffects = false,
+                        renderPreview = renderPreview,
+                        onDismiss = { colorSheetOpen = false },
+                        onApply = { style ->
+                            adjustments.outlineColorizerMode = style.mode
+                            adjustments.outlineGradientType = style.gradientType
+                            adjustments.outlineColor = Color(style.firstColor)
+                            adjustments.outlineGradientColors = style.gradientStops
+                            adjustments.outlineGradientPositions = style.gradientPositions
+                            adjustments.outlineGradientAngle = style.gradientAngle
+                            colorSheetOpen = false
+                        }
+                    )
+                }
+                OptionCard(
+                    label = stringResource(R.string.eraseTitle),
+                    onClick = onOpenEraser,
+                    trailing = {
+                        Text(
+                            text = if (adjustments.eraseStrokes.isEmpty()) {
+                                stringResource(R.string.positionDefault)
+                            } else {
+                                stringResource(R.string.eraseCount, adjustments.eraseStrokes.size)
+                            },
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExternalEditorSection(onEditExternally: (Boolean) -> Unit) {
+    val context = LocalContext.current
+    val toolboxInstalled = remember { imageToolboxInstalled(context) }
+    var menuOpen by remember { mutableStateOf(false) }
+    val expandedDescription = stringResource(R.string.stateExpanded)
+    val collapsedDescription = stringResource(R.string.stateCollapsed)
+
+    Text(
+        text = stringResource(R.string.externalEditorTitle),
+        style = MaterialTheme.typography.titleSmallEmphasized,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.padding(top = 8.dp)
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        SplitButtonLayout(
+            leadingButton = {
+                SplitButtonDefaults.LeadingButton(
+                    onClick = {
+                        if (toolboxInstalled) onEditExternally(true)
+                        else openImageToolboxStore(context)
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                        contentDescription = null,
+                        modifier = Modifier.size(SplitButtonDefaults.LeadingIconSize)
+                    )
+                    Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                    Text(
+                        text = if (toolboxInstalled) {
+                            stringResource(R.string.openInImageToolbox)
+                        } else {
+                            stringResource(R.string.installImageToolbox)
+                        }
+                    )
+                }
+            },
+            trailingButton = {
+                Box {
+                    SplitButtonDefaults.TrailingButton(
+                        checked = menuOpen,
+                        onCheckedChange = { menuOpen = it },
+                        modifier = Modifier.semantics {
+                            stateDescription = if (menuOpen) expandedDescription else collapsedDescription
+                        }
+                    ) {
+                        val rotation by animateFloatAsState(if (menuOpen) 180f else 0f, label = "chevron")
+                        Icon(
+                            imageVector = Icons.Filled.KeyboardArrowDown,
+                            contentDescription = stringResource(R.string.editInAnotherApp),
+                            modifier = Modifier
+                                .size(SplitButtonDefaults.TrailingIconSize)
+                                .graphicsLayer { rotationZ = rotation }
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = menuOpen,
+                        onDismissRequest = { menuOpen = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.editInAnotherApp)) },
+                            onClick = {
+                                menuOpen = false
+                                onEditExternally(false)
+                            }
+                        )
+                    }
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun ModifierDialogHost(
+    colorPickerOpen: Boolean,
+    centerDialogOpen: Boolean,
+    eraseDialogOpen: Boolean,
+    backgroundBrushDialogOpen: Boolean,
+    iconColor: Color,
+    sampleBitmap: Bitmap?,
+    centerPreview: Bitmap?,
+    adjustments: AdjustmentState,
+    previews: ModifierPreviews?,
+    previewGenerating: Boolean,
+    backgroundBrushPreview: Bitmap?,
+    backgroundBrushPreviewGenerating: Boolean,
+    onColorChange: (Color) -> Unit,
+    onCloseColorPicker: () -> Unit,
+    onCloseCenter: () -> Unit,
+    onCloseEraser: () -> Unit,
+    onCloseBackgroundBrush: () -> Unit
+) {
     if (colorPickerOpen) {
         ColorDialog(
-            onDismiss = { colorPickerOpen = false },
+            onDismiss = onCloseColorPicker,
             currentlySelected = iconColor,
-            onColorSelected = { onColorChange(it) },
+            onColorSelected = onColorChange,
             sampleBitmap = sampleBitmap
         )
     }
-
-
     if (centerDialogOpen) {
         CenterDialog(
             iconBitmap = centerPreview,
             adjustments = adjustments,
             renderPositionBase = previews?.positionBase,
-            onDismiss = { centerDialogOpen = false }
+            onDismiss = onCloseCenter
         )
     }
-
     if (eraseDialogOpen) {
         EraseDialog(
             iconBitmap = centerPreview,
             strokes = adjustments.eraseStrokes,
             onStrokesChange = { adjustments.eraseStrokes = it },
             generating = previewGenerating,
-            onDismiss = { eraseDialogOpen = false }
+            onDismiss = onCloseEraser
         )
     }
-
     if (backgroundBrushDialogOpen) {
         EraseDialog(
             iconBitmap = backgroundBrushPreview ?: previews?.colorizeBase ?: centerPreview,
@@ -1125,7 +1204,7 @@ internal fun ModifierTab(
             generating = previewGenerating || backgroundBrushPreviewGenerating,
             allowRestore = true,
             title = R.string.backgroundBrushTitle,
-            onDismiss = { backgroundBrushDialogOpen = false }
+            onDismiss = onCloseBackgroundBrush
         )
     }
 }
@@ -1180,7 +1259,6 @@ internal fun shapeLabel(shape: IconShape): String = stringResource(
     }
 )
 
-/** The tile glyph giving each image modifier a visual identity in the selector grid. */
 private fun imageEditIcon(edit: ImageEdit): ImageVector = when (edit) {
     ImageEdit.NONE -> Icons.Filled.Block
     ImageEdit.PATH -> Icons.Filled.Gesture
