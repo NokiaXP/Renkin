@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.School
@@ -70,11 +71,19 @@ import dev.renkinProject.renkin.BuildConfig
 import dev.renkinProject.renkin.MainViewModel
 import dev.renkinProject.renkin.R
 import dev.renkinProject.renkin.apk.ApplicationProvider
+import dev.renkinProject.renkin.apk.InstallerSelection
 import dev.renkinProject.renkin.data.DARK_MODE_DEFAULT
 import dev.renkinProject.renkin.data.DarkMode
 import dev.renkinProject.renkin.data.DarkModeKey
+import dev.renkinProject.renkin.data.INSTALL_METHOD_DEFAULT
+import dev.renkinProject.renkin.data.InstallMethod
+import dev.renkinProject.renkin.data.InstallMethodKey
+import dev.renkinProject.renkin.data.ExternalInstallerComponentKey
+import dev.renkinProject.renkin.data.AskInstallerEveryTimeKey
 import dev.renkinProject.renkin.data.getDarkModeLabels
 import dev.renkinProject.renkin.data.getEnumValue
+import dev.renkinProject.renkin.data.getStringValue
+import dev.renkinProject.renkin.data.getBooleanValue
 import dev.renkinProject.renkin.data.transfer.BackupManager
 import dev.renkinProject.renkin.util.CrashReporter
 import kotlinx.coroutines.Dispatchers
@@ -97,8 +106,17 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
     var showAbout by rememberSaveable { mutableStateOf(false) }
     var confirmClearIcons by rememberSaveable { mutableStateOf(false) }
     var showIpsBackupWarning by rememberSaveable { mutableStateOf(false) }
+    var showInstallerPicker by rememberSaveable { mutableStateOf(false) }
     var backupCheckInProgress by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val installerSelection = InstallerSelection(
+        method = prefs.getEnumValue(InstallMethodKey, INSTALL_METHOD_DEFAULT),
+        externalComponent = prefs.getStringValue(ExternalInstallerComponentKey)
+    )
+    val askInstallerEveryTime = prefs.getBooleanValue(AskInstallerEveryTimeKey)
+    val installerLabel by produceState<String?>(null, installerSelection) {
+        value = viewModel.installerLabel(installerSelection)
+    }
 
     val exportBackupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream")
@@ -164,6 +182,15 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
                     SettingsRow(Icons.Filled.BarChart, stringResource(R.string.statsButton)) {
                         showStats = true
                     }
+
+                    SettingsSectionHeader(stringResource(R.string.settingsInstallation))
+                    InstallerMethodRow(
+                        selectedLabel = installerLabel
+                            ?: stringResource(R.string.installerUnavailable),
+                        askEveryTime = askInstallerEveryTime,
+                        onClick = { showInstallerPicker = true }
+                    )
+
                     SettingsSectionHeader(stringResource(R.string.settingsBackup))
                     SettingsRow(
                         Icons.Filled.Save,
@@ -255,6 +282,19 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
                 }
             }
         }
+    }
+
+    if (showInstallerPicker) {
+        InstallerPickerScreen(
+            selected = installerSelection,
+            askEveryTime = askInstallerEveryTime,
+            onSelect = { selection ->
+                viewModel.setInstallMethod(selection.method, selection.externalComponent)
+                showInstallerPicker = false
+            },
+            onAskEveryTimeChange = viewModel::setAskInstallerEveryTime,
+            onDismiss = { showInstallerPicker = false }
+        )
     }
 
     if (showIpsBackupWarning) {
@@ -399,6 +439,47 @@ private fun ThemeRow(prefs: DataStore<Preferences>, onSelect: (DarkMode) -> Unit
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun InstallerMethodRow(
+    selectedLabel: String,
+    askEveryTime: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Filled.InstallMobile,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.installerMethod),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = if (askEveryTime) {
+                    stringResource(R.string.installerAskEveryTimeEnabled)
+                } else {
+                    selectedLabel
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Text(
+            text = selectedLabel,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

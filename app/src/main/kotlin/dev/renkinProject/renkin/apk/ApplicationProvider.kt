@@ -603,17 +603,27 @@ class ApplicationProvider internal constructor(
         )
     }
 
-    suspend fun installIconPack(iconPack: BuiltIconPack): ApkInstallOutcome {
-        val outcome = iconPackBuildService.install(iconPack)
+    suspend fun installIconPack(
+        iconPack: BuiltIconPack,
+        selection: InstallerSelection? = null
+    ): ApkInstallOutcome {
+        val outcome = iconPackBuildService.install(iconPack, selection)
         finishInstallAttempt(iconPack, outcome)
         return outcome
     }
 
     /** Explicitly approved fallback after an update conflict: uninstall, then install the APK. */
-    suspend fun replaceIconPack(iconPack: BuiltIconPack): ApkInstallOutcome {
-        val outcome = iconPackBuildService.replace(iconPack)
+    suspend fun replaceIconPack(
+        iconPack: BuiltIconPack,
+        selection: InstallerSelection? = null
+    ): ApkInstallOutcome {
+        val outcome = iconPackBuildService.replace(iconPack, selection)
         finishInstallAttempt(iconPack, outcome)
         return outcome
+    }
+
+    suspend fun finishWithoutInstallation(iconPack: BuiltIconPack) {
+        finishInstallAttempt(iconPack, ApkInstallOutcome(ApkInstallResult.ABORTED))
     }
 
     private suspend fun finishInstallAttempt(iconPack: BuiltIconPack, outcome: ApkInstallOutcome) {

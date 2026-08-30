@@ -6,11 +6,15 @@ import androidx.datastore.preferences.core.Preferences
 import dev.renkinProject.renkin.data.CalendarIconsKey
 import dev.renkinProject.renkin.data.DbApplication
 import dev.renkinProject.renkin.data.ExportThemedKey
+import dev.renkinProject.renkin.data.INSTALL_METHOD_DEFAULT
+import dev.renkinProject.renkin.data.InstallMethodKey
+import dev.renkinProject.renkin.data.ExternalInstallerComponentKey
 import dev.renkinProject.renkin.data.PrimaryIconPackKey
 import dev.renkinProject.renkin.data.RenkinPackRepository
 import dev.renkinProject.renkin.data.getBooleanValue
 import dev.renkinProject.renkin.data.getDefaultBackgroundColor
 import dev.renkinProject.renkin.data.getDefaultIconColor
+import dev.renkinProject.renkin.data.getEnumValue
 import dev.renkinProject.renkin.data.getStringValue
 import dev.renkinProject.renkin.extension.toHexString
 import dev.renkinProject.renkin.packages.PackageInfoStruct
@@ -134,18 +138,44 @@ class IconPackBuildService internal constructor(
         )
     }
 
-    suspend fun install(iconPack: BuiltIconPack): ApkInstallOutcome =
+    suspend fun install(
+        iconPack: BuiltIconPack,
+        selectionOverride: InstallerSelection? = null
+    ): ApkInstallOutcome =
         withContext(Dispatchers.Default) {
             installOrReportConflict(iconPack.canBeInstalled) {
-                ApkInstaller(context).install(iconPack.uri, iconPack.packageName)
+                runInstall(iconPack, resolveInstaller(iconPack, selectionOverride))
             }
         }
 
-    suspend fun replace(iconPack: BuiltIconPack): ApkInstallOutcome =
+    suspend fun replace(
+        iconPack: BuiltIconPack,
+        selectionOverride: InstallerSelection? = null
+    ): ApkInstallOutcome =
         withContext(Dispatchers.Default) {
             replaceAfterConflict(
                 uninstall = { ApkUninstaller(context).uninstall(iconPack.packageName) },
-                install = { ApkInstaller(context).install(iconPack.uri, iconPack.packageName) }
+                install = {
+                    runInstall(iconPack, resolveInstaller(iconPack, selectionOverride))
+                }
             )
         }
+
+    private fun resolveInstaller(
+        iconPack: BuiltIconPack,
+        override: InstallerSelection?
+    ): InstallerSelection = override ?: InstallerSelection(
+        method = iconPack.preferences.getEnumValue(InstallMethodKey, INSTALL_METHOD_DEFAULT),
+        externalComponent = iconPack.preferences.getStringValue(ExternalInstallerComponentKey)
+    )
+
+    private suspend fun runInstall(
+        iconPack: BuiltIconPack,
+        selection: InstallerSelection
+    ): ApkInstallOutcome = ApkInstaller(context).install(
+        iconPack.uri,
+        iconPack.packageName,
+        selection.method,
+        selection.externalComponent
+    )
 }

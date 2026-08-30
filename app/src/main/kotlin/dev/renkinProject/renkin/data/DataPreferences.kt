@@ -32,6 +32,9 @@ import kotlin.enums.enumEntries
 private val preferenceAccessMutex = Mutex()
 
 private const val DARK_MODE_NAME = "NIGHT_THEME"
+private const val INSTALL_METHOD_NAME = "INSTALL_METHOD"
+private const val EXTERNAL_INSTALLER_COMPONENT_NAME = "EXTERNAL_INSTALLER_COMPONENT"
+private const val ASK_INSTALLER_EVERY_TIME_NAME = "ASK_INSTALLER_EVERY_TIME"
 private const val INCLUDE_VECTOR_NAME = "INCLUDE_VECTOR"
 private const val MONOCHROME_NAME = "MONOCHROME"
 private const val EXPORT_THEMED_NAME = "EXPORT_THEMED"
@@ -61,12 +64,16 @@ const val WATCH_CHECK_INTERVAL_DEFAULT = 24 * 60
 const val WATCH_CHECK_INTERVAL_MIN = 15
 
 val DARK_MODE_DEFAULT = DarkMode.FOLLOW_SYSTEM
+val INSTALL_METHOD_DEFAULT = InstallMethod.SYSTEM
 val SOURCE_DEFAULT = Source.NONE
 val IMAGE_EDIT_DEFAULT = ImageEdit.NONE
 val TEXT_TYPE_DEFAULT = TextType.FULL_NAME
 val FALLBACK_SOURCE_DEFAULT = FallbackSource.NONE
 
 val DarkModeKey = intPreferencesKey(DARK_MODE_NAME)
+val InstallMethodKey = intPreferencesKey(INSTALL_METHOD_NAME)
+val ExternalInstallerComponentKey = stringPreferencesKey(EXTERNAL_INSTALLER_COMPONENT_NAME)
+val AskInstallerEveryTimeKey = booleanPreferencesKey(ASK_INSTALLER_EVERY_TIME_NAME)
 val IncludeVectorKey = booleanPreferencesKey(INCLUDE_VECTOR_NAME)
 val MonochromeKey = booleanPreferencesKey(MONOCHROME_NAME)
 val ExportThemedKey = booleanPreferencesKey(EXPORT_THEMED_NAME)
@@ -776,6 +783,13 @@ fun isDarkModeEnabled(darkMode: DarkMode, system: Boolean): Boolean {
 
 enum class DarkMode {
     FOLLOW_SYSTEM, DARK, LIGHT
+}
+
+/** App-wide package installation route; it must not be captured in profile snapshots. */
+enum class InstallMethod {
+    SYSTEM,
+    SHIZUKU,
+    EXTERNAL
 }
 
 enum class AppSortOrder { NAME, INSTALL_DATE }

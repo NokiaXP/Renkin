@@ -35,6 +35,7 @@ import dev.renkinProject.renkin.data.WATCH_CHECK_INTERVAL_DEFAULT
 import dev.renkinProject.renkin.data.getIntValue
 import dev.renkinProject.renkin.data.normalizeWatchCheckInterval
 import dev.renkinProject.renkin.apk.IconPackBuilder
+import dev.renkinProject.renkin.apk.ExternalInstallAwaiter
 import dev.renkinProject.renkin.packages.ApplicationManager
 import dev.renkinProject.renkin.packages.IconPackCatalog
 import dev.renkinProject.renkin.service.WatchWorker
@@ -194,6 +195,13 @@ class MainActivity : ComponentActivity() {
                 viewModel.onIconPackInstalled(newPack.packageName, newPack.applicationName)
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Third-party installers such as InstallerX use a translucent/dialog Activity. Renkin
+        // stays STARTED underneath it, so cancellation returns through onResume(), not onStart().
+        ExternalInstallAwaiter.onRenkinForegrounded()
     }
 
     private fun handleWatchIntent(intent: Intent?) {

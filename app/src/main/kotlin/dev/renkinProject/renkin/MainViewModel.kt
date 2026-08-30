@@ -14,6 +14,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.renkinProject.renkin.apk.ApkUninstaller
 import dev.renkinProject.renkin.apk.ApkInstallOutcome
+import dev.renkinProject.renkin.apk.ApkInstallBackend
 import dev.renkinProject.renkin.apk.ApkInstallResult
 import dev.renkinProject.renkin.apk.ApplicationProvider
 import dev.renkinProject.renkin.apk.BuiltIconPack
@@ -22,6 +23,9 @@ import dev.renkinProject.renkin.apk.packChanges
 import dev.renkinProject.renkin.apk.unsavedApplicationKeys
 import dev.renkinProject.renkin.apk.IconGenerationService
 import dev.renkinProject.renkin.apk.IconLockManager
+import dev.renkinProject.renkin.apk.InstallerCatalog
+import dev.renkinProject.renkin.apk.InstallerOption
+import dev.renkinProject.renkin.apk.InstallerSelection
 import dev.renkinProject.renkin.data.IconPack
 import dev.renkinProject.renkin.data.InstalledApplication
 import dev.renkinProject.renkin.data.AppFilterNoIconKey
@@ -29,15 +33,23 @@ import dev.renkinProject.renkin.data.AppSortOrder
 import dev.renkinProject.renkin.data.AppSortOrderKey
 import dev.renkinProject.renkin.data.DarkMode
 import dev.renkinProject.renkin.data.DarkModeKey
+import dev.renkinProject.renkin.data.InstallMethod
+import dev.renkinProject.renkin.data.InstallMethodKey
+import dev.renkinProject.renkin.data.INSTALL_METHOD_DEFAULT
+import dev.renkinProject.renkin.data.ExternalInstallerComponentKey
+import dev.renkinProject.renkin.data.AskInstallerEveryTimeKey
 import dev.renkinProject.renkin.data.HideProfileShareWarningKey
 import dev.renkinProject.renkin.data.OnboardingSeenKey
 import dev.renkinProject.renkin.data.PrimaryIconPackKey
 import dev.renkinProject.renkin.data.Source
 import dev.renkinProject.renkin.data.getPreferencesAfterPendingWrites
 import dev.renkinProject.renkin.data.getStringValue
+import dev.renkinProject.renkin.data.getBooleanValue
+import dev.renkinProject.renkin.data.getEnumValue
 import dev.renkinProject.renkin.data.setBooleanValue
 import dev.renkinProject.renkin.data.setEnumValue
 import dev.renkinProject.renkin.data.setPrimarySource
+import dev.renkinProject.renkin.data.setStringValue
 import dev.renkinProject.renkin.data.transfer.BackupManager
 import dev.renkinProject.renkin.data.transfer.isIconPackStudioExport
 import dev.renkinProject.renkin.data.watch.WatchRepository
@@ -72,11 +84,6 @@ internal fun isProfileSummaryReady(
     baselineProfileId == activeProfileId
 
 /**
- * Owns the [ApplicationProvider] for the app's lifetime. The provider is injected (a Hilt
- * @Singleton), so the loaded app list / icon packs survive configuration changes such as
- * rotation instead of being re-loaded on every Activity recreation.
- */
-/**
  * The icon-building operations the per-app options dialog's `IconDraftState` needs.
  * [MainViewModel] implements it; a test can supply a fake, so the draft/generation logic is
  * unit-testable without a real view model or Android.
@@ -97,13 +104,9 @@ interface IconPreviewBuilder {
  */
 enum class IconApplyResult {
     APPLIED,
-    /** The pick's true origin is a pack this device doesn't own — withheld. */
     LOCKED,
-    /** The target row was gone by the time the icon finished rendering. */
     TARGET_GONE,
-    /** Another watch deep-link switched profiles while this suggestion was being applied. */
     PROFILE_CHANGED,
-    /** Rendering or source resolution failed; the watch rule must stay available to retry. */
     FAILED
 }
 
@@ -114,21 +117,15 @@ class MainViewModel @Inject constructor(
     private val watchRepo: WatchRepository,
     private val backupManager: BackupManager
 ) : AndroidViewModel(application), IconPreviewBuilder {
+    private val installerCatalog = InstallerCatalog(application)
     /**
      * Keeps profile-session bookkeeping on the same side of a profile switch as the provider
      * operation that changed the icon. The provider separately protects its live icon list.
      */
     private val profileSessionOperations = Mutex()
 
-    // ---- Model state exposed to the UI (read-only) -------------------------------
-    // The UI observes these instead of reaching through to ApplicationProvider, so the
-    // view model stays the single point of contact with the model layer. Each is backed
-    // by Compose state in the provider/repository, so reads in composition stay reactive.
-
-    /** The loaded apps, each with its current (created) icon. Edited via [applyIcon]. */
     val applicationList: List<PackageInfoStruct> get() = appProvider.applicationList
 
-    /** Saved colours/gradients offered by every colour sheet. */
     val colorPresets: kotlinx.coroutines.flow.StateFlow<List<dev.renkinProject.renkin.data.ColorPreset>> =
         appProvider.colorPresets().stateIn(
             viewModelScope,
@@ -150,7 +147,6 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    /** Saved Modifier-tab recipes offered by the edit dialog, most recently used first. */
     val modifierPresets: kotlinx.coroutines.flow.StateFlow<List<dev.renkinProject.renkin.data.ModifierPreset>> =
         appProvider.modifierPresets().stateIn(
             viewModelScope,
@@ -176,7 +172,6 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    /** Loading a preset only reorders the library; the icon itself changes on Apply. */
     fun markModifierPresetUsed(id: Long) {
         viewModelScope.launch { appProvider.markModifierPresetUsed(id) }
     }
@@ -188,16 +183,12 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    /** The installed icon packs available as icon sources. */
     val iconPacks: List<IconPack> get() = appProvider.iconPacks
 
-    /** True once the icon packs have finished loading. */
     val iconPackLoaded: Boolean get() = appProvider.iconPackLoaded
 
-    /** True once the app list has finished loading. */
     val applicationsLoaded: Boolean get() = appProvider.applicationsLoaded
 
-    /** True once apps, icon packs AND the saved profile icons have all loaded (cold start). */
     val startupComplete: Boolean get() = appProvider.startupComplete
 
     var startupLoading by mutableStateOf(false)
@@ -327,7 +318,6 @@ class MainViewModel @Inject constructor(
     // it pop again on every return to the foreground.
     private val promptedIconPacks = mutableSetOf<String>()
 
-    /** Prompts for a newly-detected icon pack, at most once per pack per session. */
     fun onIconPackInstalled(packageName: String, label: String) {
         if (!promptedIconPacks.add(packageName)) return
         newIconPackInstalled = label
@@ -353,7 +343,6 @@ class MainViewModel @Inject constructor(
     private val _undoEvents = Channel<UndoPrompt>(Channel.CONFLATED)
     val undoEvents = _undoEvents.receiveAsFlow()
 
-    /** Puts the last icon change back. Silent when the change no longer applies. */
     fun undoLastIconChange() {
         viewModelScope.launch {
             if (appProvider.undoLastIconChange()) {
@@ -403,17 +392,9 @@ class MainViewModel @Inject constructor(
         loadStartup()
     }
 
-    // ---- Operation orchestration -------------------------------------------------
-    // The heavy work lives in suspend functions on ApplicationProvider (each hops to
-    // Dispatchers.Default internally), so these run safely on viewModelScope (main).
-    // UI state is exposed as Compose state; composables read it and call these instead
-    // of spinning up their own lifecycleScope coroutines.
-
-    /** True while [refresh] is regenerating icons. Drives the refresh spinner and blocks build. */
     var isRefreshing by mutableStateOf(false)
         private set
 
-    /** Regenerates every app from a snapshot taken after pending DataStore writes complete. */
     fun refresh() {
         if (isRefreshing) return
         // Set synchronously so a second tap cannot enqueue another refresh before the coroutine
@@ -449,7 +430,6 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    /** Persists the hero source, then immediately applies the same clear/refresh semantics. */
     fun selectPrimarySource(source: Source, packageName: String?) {
         viewModelScope.launch {
             getApplication<Application>().dataStore.setPrimarySource(source, packageName)
@@ -473,6 +453,23 @@ class MainViewModel @Inject constructor(
         setEnumValue(DarkModeKey, mode)
     }
 
+    fun setInstallMethod(method: InstallMethod, externalComponent: String = "") = updatePreferences {
+        setEnumValue(InstallMethodKey, method)
+        setStringValue(ExternalInstallerComponentKey, externalComponent)
+    }
+
+    fun setAskInstallerEveryTime(enabled: Boolean) = updatePreferences {
+        setBooleanValue(AskInstallerEveryTimeKey, enabled)
+    }
+
+    suspend fun installerEntries(): List<InstallerOption> = withContext(Dispatchers.IO) {
+        installerCatalog.entries()
+    }
+
+    suspend fun installerLabel(selection: InstallerSelection): String? = withContext(Dispatchers.IO) {
+        installerCatalog.labelFor(selection)
+    }
+
     fun hideProfileShareWarning() = updatePreferences {
         setBooleanValue(HideProfileShareWarningKey, true)
     }
@@ -483,7 +480,6 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch { getApplication<Application>().dataStore.block() }
     }
 
-    /** Current build step text while a pack is building; null when no build is in progress. */
     var buildStep by mutableStateOf<String?>(null)
         private set
 
@@ -507,18 +503,11 @@ class MainViewModel @Inject constructor(
             }
         }
 
-    /** True if the generated pack at [packageName] is currently installed on the device. */
     private suspend fun isIconPackInstalled(packageName: String): Boolean = runCatching {
         getApplication<Application>().packageManager.getPackageInfo(packageName, 0)
     }.isSuccess
 
-    /**
-     * Shown as a dialog after a successful build+install: FIRST_INSTALL tells the user to pick
-     * "Renkin Pack" in the launcher, UPDATE explains the switch-away-and-back launcher refresh.
-     * null = no dialog pending.
-     */
     enum class BuildOutcome { FIRST_INSTALL, UPDATE }
-    /** Outcome + the launcher label of the pack that was just built, for the dialog text. */
     data class BuildOutcomeInfo(val outcome: BuildOutcome, val packLabel: String)
     var buildOutcome by mutableStateOf<BuildOutcomeInfo?>(null)
         private set
@@ -531,13 +520,14 @@ class MainViewModel @Inject constructor(
 
     fun dismissInstallFailure() { installFailure = null }
 
-    private data class PendingInstallFallback(
+    private data class PendingPackInstall(
         val pack: BuiltIconPack,
         val wasUpdate: Boolean,
-        val packLabel: String
+        val packLabel: String,
+        val selection: InstallerSelection
     )
 
-    private var pendingInstallFallback: PendingInstallFallback? = null
+    private var pendingInstallFallback: PendingPackInstall? = null
     var installFallbackPending by mutableStateOf(false)
         private set
 
@@ -546,7 +536,6 @@ class MainViewModel @Inject constructor(
         installFallbackPending = false
     }
 
-    /** Runs only after the user accepts that the conflicting installed pack must be replaced. */
     fun confirmInstallFallback() {
         val pending = pendingInstallFallback ?: return
         dismissInstallFallback()
@@ -554,7 +543,7 @@ class MainViewModel @Inject constructor(
             try {
                 buildStep = getApplication<Application>().getString(R.string.buildReplacing)
                 handleInstallOutcome(
-                    outcome = appProvider.replaceIconPack(pending.pack),
+                    outcome = appProvider.replaceIconPack(pending.pack, pending.selection),
                     pending = pending,
                     offerReplacement = false
                 )
@@ -570,7 +559,37 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    /** Builds from a preference snapshot taken after pending UI writes have completed. */
+    private var pendingInstallerSelection: PendingPackInstall? = null
+    var installerSelectionPending by mutableStateOf(false)
+        private set
+
+    fun confirmInstallerSelection(selection: InstallerSelection) {
+        val pending = pendingInstallerSelection ?: return
+        pendingInstallerSelection = null
+        installerSelectionPending = false
+        val selectedPending = pending.copy(selection = selection)
+        viewModelScope.launch {
+            try {
+                installBuiltPack(selectedPending)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.error("MainViewModel", "Selected installer failed", e)
+                _toastEvents.trySend(R.string.iconPackInstallFailed)
+            } finally {
+                buildStep = null
+                buildProgress = null
+            }
+        }
+    }
+
+    fun dismissInstallerSelection() {
+        val pending = pendingInstallerSelection ?: return
+        pendingInstallerSelection = null
+        installerSelectionPending = false
+        viewModelScope.launch { appProvider.finishWithoutInstallation(pending.pack) }
+    }
+
     fun build(profileId: Long) {
         if (buildStep != null) return
         if (appProvider.isProfileSwitching || profileId != appProvider.activeProfileId) {
@@ -590,20 +609,18 @@ class MainViewModel @Inject constructor(
                     textMethod = { buildStep = it; buildProgress = null },
                     progressMethod = { done, total -> buildProgress = done to total }
                 )
-                // The system install is the slow part (2-3s) — show it as its own step so the
-                // dialog reflects what's happening. "Updating" when our pack is already
-                // installed, "Installing" for a first build. Decided before installing, so it
-                // also tells us which follow-up instructions dialog to show afterwards.
                 val wasUpdate = isIconPackInstalled(pack.packageName)
-                val pending = PendingInstallFallback(pack, wasUpdate, pack.packLabel)
-                buildStep = getApplication<Application>().getString(
-                    if (wasUpdate) R.string.buildUpdating else R.string.buildInstalling
+                val selection = InstallerSelection(
+                    method = preferences.getEnumValue(InstallMethodKey, INSTALL_METHOD_DEFAULT),
+                    externalComponent = preferences.getStringValue(ExternalInstallerComponentKey)
                 )
-                handleInstallOutcome(
-                    outcome = appProvider.installIconPack(pack),
-                    pending = pending,
-                    offerReplacement = true
-                )
+                val pending = PendingPackInstall(pack, wasUpdate, pack.packLabel, selection)
+                if (preferences.getBooleanValue(AskInstallerEveryTimeKey)) {
+                    pendingInstallerSelection = pending
+                    installerSelectionPending = true
+                    return@launch
+                }
+                installBuiltPack(pending)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -618,13 +635,34 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    private suspend fun installBuiltPack(pending: PendingPackInstall) {
+        buildStep = getApplication<Application>().getString(
+            if (pending.wasUpdate) R.string.buildUpdating else R.string.buildInstalling
+        )
+        handleInstallOutcome(
+            outcome = appProvider.installIconPack(pending.pack, pending.selection),
+            pending = pending,
+            offerReplacement = true
+        )
+    }
+
     private suspend fun handleInstallOutcome(
         outcome: ApkInstallOutcome,
-        pending: PendingInstallFallback,
+        pending: PendingPackInstall,
         offerReplacement: Boolean
     ) {
         when (outcome.result) {
-            ApkInstallResult.SUCCESS -> completeSuccessfulInstall(pending)
+            ApkInstallResult.SUCCESS -> {
+                if (outcome.requestedMethod == InstallMethod.SHIZUKU &&
+                    outcome.attempts.any {
+                        it.backend == ApkInstallBackend.SHIZUKU &&
+                            it.result != ApkInstallResult.SUCCESS
+                    }
+                ) {
+                    _toastEvents.trySend(R.string.shizukuSystemFallback)
+                }
+                completeSuccessfulInstall(pending)
+            }
             ApkInstallResult.CONFLICT -> if (offerReplacement) {
                 pendingInstallFallback = pending
                 installFallbackPending = true
@@ -658,14 +696,20 @@ class MainViewModel @Inject constructor(
                 appendLine("Android: ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
                 appendLine("Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
                 appendLine("Pack: ${pack.packageName}")
+                appendLine("Requested installer: ${outcome.requestedMethod.name}")
                 appendLine("Result: ${outcome.result.name}")
+                if (outcome.attempts.isNotEmpty()) {
+                    appendLine("Routes attempted: " + outcome.attempts.joinToString(" → ") {
+                        "${it.backend.diagnosticName} (${it.result.name})"
+                    })
+                }
                 appendLine()
                 append(detail)
             }
         )
     }
 
-    private suspend fun completeSuccessfulInstall(pending: PendingInstallFallback) {
+    private suspend fun completeSuccessfulInstall(pending: PendingPackInstall) {
         // The pack now ships what is on screen; undoing a refresh from before the build would
         // silently disagree with the installed icons.
         appProvider.clearUndo()
@@ -817,8 +861,6 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    // ---- Global icon modifiers -----------------------------------------------------
-
     /**
      * Called when the Global options activity returns: the work happened on the shared
      * provider (via GlobalOptionsViewModel), so this only refreshes the session bookkeeping —
@@ -912,10 +954,6 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    // ---- Icon preview (used by the per-app options / watch-apply dialogs) ---------
-    // Pure builders with no side effects: they return an icon for the dialog to preview;
-    // committing it goes through applyIcon. Each hops to Dispatchers.Default internally.
-
     /** Builds a preview icon for [app] from [options] (optionally a specific pack pick). */
     override suspend fun previewIcon(
         app: PackageInfoStruct,
@@ -941,10 +979,6 @@ class MainViewModel @Inject constructor(
     suspend fun iconPackDropdownIcons(application: InstalledApplication?): Map<String, ResourceDrawable> =
         appProvider.getIconPackDropdownIcons(application)
 
-    // ---- Icon-pack browser previews ---------------------------------------------------
-    // The pack browser's heavy work (enumerating, filtering and rasterising a pack's drawables,
-    // plus the row-preview cache) lives in PackBrowserPreviews; the view model just forwards to it
-    // so the UI still only talks to the view model. buildPackIcons is wired to the provider.
     private val packBrowserPreviews by lazy {
         appProvider.packBrowserPreviews()
     }
@@ -967,8 +1001,6 @@ class MainViewModel @Inject constructor(
         component: InstalledApplication? = null,
         onChunk: (List<PackIconPreview>) -> Unit
     ) = packBrowserPreviews.detailPreviews(iconPack, sortOrder, query, options, component, onChunk)
-
-    // ---- Profiles -----------------------------------------------------------------
 
     /** All profiles for the switcher (default first). */
     val profiles = appProvider.profilesFlow()
@@ -1088,8 +1120,6 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    // ---- Missing icon packs ---------------------------------------------------------
-
     /** Keys of the active profile's icons locked behind a missing pack (marks the rows). */
     val lockedIconKeys: Set<String> get() = appProvider.lockedIconKeys
 
@@ -1127,8 +1157,6 @@ class MainViewModel @Inject constructor(
         showMissingPacksDialog = false
         if (dontShowAgain) viewModelScope.launch { appProvider.setHideMissingPackWarning(true) }
     }
-
-    // ---- Backup -------------------------------------------------------------------
 
     /**
      * Uses the live list for the active profile so an unsaved IPS selection is not missed;

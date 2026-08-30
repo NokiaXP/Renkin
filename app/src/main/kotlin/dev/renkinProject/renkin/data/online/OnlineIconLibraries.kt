@@ -8,15 +8,20 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.renkinProject.renkin.util.Log
 import java.io.File
 import java.io.IOException
+import java.io.InterruptedIOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.io.StringReader
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
@@ -35,25 +40,18 @@ import org.xmlpull.v1.XmlPullParser
  * normally and go through the pack browser.
  */
 data class IconifyCollection(
-    /** Iconify's set id, e.g. "mdi" or "simple-icons". */
     val prefix: String,
     val name: String,
     val total: Int,
-    /** SPDX licence id (falls back to the licence title); empty when the API lists none. */
     val license: String,
-    /** Iconify category ("General", "Brands / Social", …); empty when uncategorised. */
     val category: String,
-    /** True = a multicolour set (emoji, flags, flat-colour icons); false = monochrome glyphs. */
     val palette: Boolean,
-    /** A few icon names the API suggests as previews. */
     val samples: List<String>
 )
 
-/** One icon in a set; the SVG itself is fetched only when needed. */
 data class OnlineIcon(val prefix: String, val name: String) {
     val label: String get() = name.replace('-', ' ')
 
-    /** Public URL of the SVG — also stored as the icon's attribution reference. */
     val svgUrl: String get() = "https://api.iconify.design/$prefix/$name.svg"
 }
 
@@ -91,7 +89,6 @@ class OnlineIconRepository @Inject constructor(
     private val cacheRoot: File
         get() = File(context.cacheDir, "online-icons").apply { mkdirs() }
 
-    /** Every Iconify set with its metadata (licence, category, palette), cached for a week. */
     suspend fun collections(): List<IconifyCollection>? = withContext(Dispatchers.IO) {
         memoryCollections?.let { return@withContext it }
         indexLocks.getOrPut("collections") { Mutex() }.withLock {
@@ -103,7 +100,6 @@ class OnlineIconRepository @Inject constructor(
         }
     }
 
-    /** One set's icon names, cached for a week. */
     suspend fun icons(collection: IconifyCollection): List<OnlineIcon>? = withContext(Dispatchers.IO) {
         memoryIndexes[collection.prefix]?.let { return@withContext it }
         indexLocks.getOrPut("set:${collection.prefix}") { Mutex() }.withLock {
@@ -132,7 +128,6 @@ class OnlineIconRepository @Inject constructor(
         parseSearch(json)?.also { searchMemory.put(key, it) }
     }
 
-    /** The icon's SVG markup, from the per-icon disk cache or the API. */
     suspend fun svg(icon: OnlineIcon): String? = withContext(Dispatchers.IO) {
         svgMemory.get(icon.svgUrl)?.let { return@withContext it }
         val lock = svgLocks.getOrPut(icon.svgUrl) { Mutex() }
@@ -148,7 +143,7 @@ class OnlineIconRepository @Inject constructor(
         }
     }
 
-    private fun loadSvg(icon: OnlineIcon): String? {
+    private suspend fun loadSvg(icon: OnlineIcon): String? {
         val dir = File(cacheRoot, "iconify-${cacheKey(icon.prefix)}").apply { mkdirs() }
         val cache = File(dir, "${cacheKey(icon.svgUrl)}.svg")
         if (cache.isFile) {
@@ -166,7 +161,11 @@ class OnlineIconRepository @Inject constructor(
      * [INDEX_TTL_MS], otherwise the cached copy; a fetch that fails [parses] must never
      * clobber a still-parsable cache.
      */
-    private fun cachedOrFetch(cache: File, url: String, parses: (String) -> Boolean): String? {
+    private suspend fun cachedOrFetch(
+        cache: File,
+        url: String,
+        parses: (String) -> Boolean
+    ): String? {
         val cached = cache.takeIf { it.isFile }?.let { runCatching { it.readText() }.getOrNull() }
             ?.takeIf(parses)
         val fresh = if (cached == null || cache.ageMs() > INDEX_TTL_MS) {
@@ -202,11 +201,10 @@ class OnlineIconRepository @Inject constructor(
         private const val SVG_FETCH_CONCURRENCY = 6
         private const val SEARCH_LIMIT = 120
         private const val SEARCH_MEMORY_QUERIES = 24
+        private const val HTTP_ATTEMPTS = 3
+        private const val HTTP_RETRY_BASE_DELAY_MS = 400L
+        private const val HTTP_MAX_RETRY_AFTER_MS = 15_000L
 
-        /**
-         * Parses a /search response ({"icons":["prefix:name",…]}) into icons. Null when the
-         * JSON is unreadable; an empty array is a legitimate empty result.
-         */
         fun parseSearch(json: String): List<OnlineIcon>? = runCatching {
             val array = JSONObject(json).optJSONArray("icons") ?: return null
             val icons = mutableListOf<OnlineIcon>()
@@ -241,10 +239,6 @@ class OnlineIconRepository @Inject constructor(
                 .digest(value.toByteArray(Charsets.UTF_8))
                 .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
 
-        /**
-         * Parses the /collections response ({prefix: {name, total, license, category,
-         * palette, samples}, …}) into sets sorted by name. Null when unreadable.
-         */
         fun parseCollections(json: String): List<IconifyCollection>? = runCatching {
             val root = JSONObject(json)
             val collections = mutableListOf<IconifyCollection>()
@@ -277,10 +271,6 @@ class OnlineIconRepository @Inject constructor(
             collections.toList().takeIf { it.isNotEmpty() }
         }.getOrNull()
 
-        /**
-         * Parses one /collection response into its icon names: "uncategorized" plus every
-         * category list, deduplicated and sorted. Null when unreadable or empty.
-         */
         fun parseCollection(json: String): List<OnlineIcon>? = runCatching {
             val root = JSONObject(json)
             val prefix = root.optString("prefix").takeIf { it.isNotEmpty() } ?: return null
@@ -303,8 +293,26 @@ class OnlineIconRepository @Inject constructor(
                 .takeIf { it.isNotEmpty() }
         }.getOrNull()
 
-        /** Small GET returning the body as text; null on any failure or oversized response. */
-        private fun httpGetText(url: String, maxBytes: Int): String? {
+        private suspend fun httpGetText(url: String, maxBytes: Int): String? {
+            repeat(HTTP_ATTEMPTS) { attempt ->
+                val response = try {
+                    runInterruptible(Dispatchers.IO) { executeHttpGet(url, maxBytes) }
+                } catch (e: IOException) {
+                    if (attempt == HTTP_ATTEMPTS - 1) {
+                        Log.error("OnlineIcons", "GET failed after retries: $url", e)
+                    }
+                    HttpTextResponse(retryable = true)
+                }
+                response.body?.let { return it }
+                if (!response.retryable || attempt == HTTP_ATTEMPTS - 1) return null
+
+                val exponentialDelay = HTTP_RETRY_BASE_DELAY_MS * (1L shl attempt)
+                delay(response.retryAfterMs ?: exponentialDelay)
+            }
+            return null
+        }
+
+        private fun executeHttpGet(url: String, maxBytes: Int): HttpTextResponse {
             var connection: HttpURLConnection? = null
             return try {
                 connection = (URL(url).openConnection() as HttpURLConnection).apply {
@@ -314,17 +322,41 @@ class OnlineIconRepository @Inject constructor(
                     setRequestProperty("User-Agent", "Renkin (Android)")
                     setRequestProperty("Accept-Encoding", "identity")
                 }
-                if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
-                connection.inputStream.use { stream ->
+                val status = connection.responseCode
+                if (status != HttpURLConnection.HTTP_OK) {
+                    return HttpTextResponse(
+                        retryable = status in TRANSIENT_HTTP_STATUSES,
+                        retryAfterMs = if (status == 429 || status == 503) {
+                            retryAfterDelayMs(connection.getHeaderField("Retry-After"))
+                        } else {
+                            null
+                        }
+                    )
+                }
+                val body = connection.inputStream.use { stream ->
                     val bytes = stream.readNBytesCompat(maxBytes + 1)
                     if (bytes.size > maxBytes) null else String(bytes, Charsets.UTF_8)
                 }
-            } catch (e: IOException) {
-                Log.error("OnlineIcons", "GET failed: $url", e)
-                null
+                HttpTextResponse(body = body)
             } finally {
                 connection?.disconnect()
             }
+        }
+
+        internal fun retryAfterDelayMs(
+            value: String?,
+            nowMillis: Long = System.currentTimeMillis()
+        ): Long? {
+            val raw = value?.trim().takeUnless { it.isNullOrEmpty() } ?: return null
+            val delayMs = raw.toLongOrNull()?.let { seconds ->
+                seconds.coerceIn(0L, HTTP_MAX_RETRY_AFTER_MS / 1_000L) * 1_000L
+            }
+                ?: runCatching {
+                    ZonedDateTime.parse(raw, DateTimeFormatter.RFC_1123_DATE_TIME)
+                        .toInstant()
+                        .toEpochMilli() - nowMillis
+                }.getOrNull()
+            return delayMs?.coerceIn(0L, HTTP_MAX_RETRY_AFTER_MS)
         }
 
         /** InputStream.readNBytes needs API 33 on Android; minSdk is lower. */
@@ -333,6 +365,7 @@ class OnlineIconRepository @Inject constructor(
             val chunk = ByteArray(16 * 1024)
             var total = 0
             while (total <= limit) {
+                if (Thread.currentThread().isInterrupted) throw InterruptedIOException("GET cancelled")
                 val read = read(chunk, 0, minOf(chunk.size, limit - total + 1))
                 if (read < 0) break
                 buffer.write(chunk, 0, read)
@@ -340,5 +373,13 @@ class OnlineIconRepository @Inject constructor(
             }
             return buffer.toByteArray()
         }
+
+        private data class HttpTextResponse(
+            val body: String? = null,
+            val retryable: Boolean = false,
+            val retryAfterMs: Long? = null
+        )
+
+        private val TRANSIENT_HTTP_STATUSES = setOf(408, 425, 429, 500, 502, 503, 504)
     }
 }
