@@ -130,6 +130,8 @@ Switcher = the top-bar title dropdown.
 
 - **Fullscreen screens** (Settings, Crash logs, Watched icons) are fullscreen dialogs with
   the same M3 `TopAppBar`: back arrow, primary-tinted title, actions on the right.
+- **Fullscreen content width**: single-column screens use `CenteredFullscreenContent` so rows
+  stay at a readable 720 dp maximum on tablets and occupy the wider side of a separating fold.
 - **Feedback**: plain notices go through the shared `Toaster` (`LocalToaster` + `ToastHost`);
   a `SnackbarHost` exists only where an action is attached (upload gallery's Undo).
 - **Shapes**: use the tokens in `ui/theme/Shapes.kt` (`DialogShape`/`CardShape`/`FieldShape`/

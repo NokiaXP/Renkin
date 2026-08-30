@@ -2,7 +2,12 @@ package dev.renkinProject.renkin.ui
 
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
@@ -40,6 +45,12 @@ internal data class HorizontalPaneLayout(
     val separatorWidth: Dp,
     val trailingWidth: Dp,
     val avoidsHinge: Boolean
+)
+
+@Immutable
+internal data class CenteredPaneLayout(
+    val start: Dp,
+    val width: Dp
 )
 
 @Composable
@@ -91,6 +102,58 @@ internal fun horizontalPaneLayout(
         trailingWidth = contentWidth - leadingWidth,
         avoidsHinge = false
     )
+}
+
+internal fun centeredPaneLayout(
+    availableWidth: Dp,
+    maximumContentWidth: Dp,
+    separatingVerticalHinge: VerticalHingeBounds? = null
+): CenteredPaneLayout {
+    val hinge = separatingVerticalHinge
+        ?.takeIf { it.start >= 0.dp && it.end >= it.start && it.end <= availableWidth }
+    val paneStart: Dp
+    val paneWidth: Dp
+    if (hinge == null) {
+        paneStart = 0.dp
+        paneWidth = availableWidth
+    } else {
+        val trailingWidth = availableWidth - hinge.end
+        if (hinge.start >= trailingWidth) {
+            paneStart = 0.dp
+            paneWidth = hinge.start
+        } else {
+            paneStart = hinge.end
+            paneWidth = trailingWidth
+        }
+    }
+    val contentWidth = minOf(maximumContentWidth, paneWidth)
+    return CenteredPaneLayout(
+        start = paneStart + (paneWidth - contentWidth) / 2f,
+        width = contentWidth
+    )
+}
+
+@Composable
+internal fun CenteredFullscreenContent(
+    modifier: Modifier = Modifier,
+    maximumContentWidth: Dp = 720.dp,
+    content: @Composable BoxScope.() -> Unit
+) {
+    val adaptiveLayoutInfo = LocalAdaptiveLayoutInfo.current
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val layout = centeredPaneLayout(
+            availableWidth = maxWidth,
+            maximumContentWidth = maximumContentWidth,
+            separatingVerticalHinge = adaptiveLayoutInfo.separatingVerticalHinge
+        )
+        Box(
+            modifier = Modifier
+                .offset(x = layout.start)
+                .width(layout.width)
+                .fillMaxHeight(),
+            content = content
+        )
+    }
 }
 
 internal val LocalAdaptiveLayoutInfo = staticCompositionLocalOf {

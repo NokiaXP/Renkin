@@ -154,13 +154,13 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
                     )
                 }
             ) { innerPadding ->
-                Column(
-                    Modifier
-                        .padding(innerPadding)
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp)
-                ) {
+                CenteredFullscreenContent(Modifier.padding(innerPadding)) {
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp)
+                    ) {
                     SettingsSectionHeader(stringResource(R.string.settingsAppearance))
                     ThemeRow(prefs, viewModel::setDarkMode)
 
@@ -279,6 +279,7 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
                             Text(stringResource(R.string.aboutTitle))
                         }
                     }
+                }
                 }
             }
         }

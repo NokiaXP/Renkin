@@ -99,4 +99,38 @@ class AdaptiveLayoutTest {
         assertTrue(wideLayout!!.leadingWidth >= 220.dp)
         assertTrue(wideLayout.trailingWidth >= 320.dp)
     }
+
+    @Test
+    fun centeredContentUsesReadableTabletWidth() {
+        val layout = centeredPaneLayout(
+            availableWidth = 1_200.dp,
+            maximumContentWidth = 720.dp
+        )
+
+        assertEquals(240.dp, layout.start)
+        assertEquals(720.dp, layout.width)
+    }
+
+    @Test
+    fun centeredContentFillsNarrowWindow() {
+        val layout = centeredPaneLayout(
+            availableWidth = 600.dp,
+            maximumContentWidth = 720.dp
+        )
+
+        assertEquals(0.dp, layout.start)
+        assertEquals(600.dp, layout.width)
+    }
+
+    @Test
+    fun centeredContentUsesWiderSideOfSeparatingHinge() {
+        val layout = centeredPaneLayout(
+            availableWidth = 1_000.dp,
+            maximumContentWidth = 400.dp,
+            separatingVerticalHinge = VerticalHingeBounds(420.dp, 440.dp)
+        )
+
+        assertEquals(520.dp, layout.start)
+        assertEquals(400.dp, layout.width)
+    }
 }

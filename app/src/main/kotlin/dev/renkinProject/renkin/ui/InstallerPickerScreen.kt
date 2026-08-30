@@ -99,23 +99,24 @@ fun InstallerPickerScreen(
                     )
                 }
             ) { innerPadding ->
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .padding(innerPadding)
-                        .fillMaxSize()
-                        .drawVerticalScrollbar(listState),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    installerItems(options, selected, onSelect)
+                CenteredFullscreenContent(Modifier.padding(innerPadding)) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .drawVerticalScrollbar(listState),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        installerItems(options, selected, onSelect)
 
-                    item(key = "ask_every_time") {
-                        AskEveryTimeCard(
-                            checked = askEveryTime,
-                            onCheckedChange = onAskEveryTimeChange,
-                            modifier = Modifier.padding(top = 6.dp)
-                        )
+                        item(key = "ask_every_time") {
+                            AskEveryTimeCard(
+                                checked = askEveryTime,
+                                onCheckedChange = onAskEveryTimeChange,
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                        }
                     }
                 }
             }
