@@ -291,6 +291,30 @@ class IconDraftStateTest {
     }
 
     @Test
+    fun staleUploadGeneration_doesNotReplaceANewerVectorSelection() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val staleResult = FakeIcon()
+        val selectedVector = FakeIcon()
+        val draft = IconDraftState(null).apply { selectUpload(FakeIcon()) }
+        val builder = FakeBuilder(
+            modifierResult = staleResult,
+            modifierStarted = started,
+            modifierRelease = release
+        )
+
+        val job = launch { draft.regenerateUpload(builder, options()) }
+        started.await()
+        draft.selectVector(selectedVector)
+        draft.regenerateVector(FakeBuilder(), options())
+        release.complete(Unit)
+        job.join()
+
+        assertEquals(IconOrigin.VECTOR, draft.origin)
+        assertSame(selectedVector, draft.iconToConfirm)
+    }
+
+    @Test
     fun confirmedSourcePack_keepsOnlyThePackThatProducedTheDraft() {
         assertEquals(
             "pack.new",

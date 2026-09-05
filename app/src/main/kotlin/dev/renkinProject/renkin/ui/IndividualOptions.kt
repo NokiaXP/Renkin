@@ -172,6 +172,9 @@ internal class IconDraftState(initialIcon: IconPackDrawable?) {
     var generating by mutableStateOf(false)
         private set
     private var activeGenerations = 0
+    private var createGeneration = 0
+    private var uploadGeneration = 0
+    private var vectorGeneration = 0
 
     // Keep the existing icon on the first pass — only regenerate once the user actually
     // changes a source, modifier or selects an icon.
@@ -194,6 +197,7 @@ internal class IconDraftState(initialIcon: IconPackDrawable?) {
      * The caller is responsible for clearing their UI-only selection state.
      */
     fun selectCreate() {
+        invalidateGenerations()
         uploadBase = null
         uploadIcon = null
         vectorIcon = null
@@ -202,6 +206,7 @@ internal class IconDraftState(initialIcon: IconPackDrawable?) {
     }
 
     fun selectUpload(icon: IconPackDrawable) {
+        invalidateGenerations()
         createIcon = null
         vectorIcon = null
         modifiedVector = null
@@ -211,11 +216,13 @@ internal class IconDraftState(initialIcon: IconPackDrawable?) {
     }
 
     fun clearUpload() {
+        uploadGeneration++
         uploadBase = null
         uploadIcon = null
     }
 
     fun selectVector(icon: IconPackDrawable) {
+        invalidateGenerations()
         createIcon = null
         uploadBase = null
         uploadIcon = null
@@ -225,6 +232,7 @@ internal class IconDraftState(initialIcon: IconPackDrawable?) {
     }
 
     fun clearVector() {
+        vectorGeneration++
         vectorIcon = null
         modifiedVector = null
     }
@@ -241,6 +249,12 @@ internal class IconDraftState(initialIcon: IconPackDrawable?) {
         }
     }
 
+    private fun invalidateGenerations() {
+        createGeneration++
+        uploadGeneration++
+        vectorGeneration++
+    }
+
     suspend fun regenerateCreate(
         builder: IconPreviewBuilder,
         app: PackageInfoStruct,
@@ -254,7 +268,8 @@ internal class IconDraftState(initialIcon: IconPackDrawable?) {
         val custom = customIconList.firstOrNull()
         // previewIcon / applyModifier hop to Dispatchers.Default internally, so this no
         // longer blocks the main thread; show the spinner for the duration.
-        createIcon = trackGeneration {
+        val generation = ++createGeneration
+        val generated = trackGeneration {
             when {
                 custom != null -> builder.previewIcon(app, options, custom)
                 // Icon-pack source with no new pick: apply the modifier to the already saved icon
@@ -265,11 +280,13 @@ internal class IconDraftState(initialIcon: IconPackDrawable?) {
                 else -> builder.previewIcon(app, options, null)
             }
         }
+        if (generation == createGeneration) createIcon = generated
     }
 
     suspend fun regenerateVector(builder: IconPreviewBuilder, options: GenerationOptions) {
         val base = vectorIcon
-        modifiedVector = when {
+        val generation = ++vectorGeneration
+        val generated = when {
             base == null -> null
             // Only skip when there's truly nothing to apply — scale, shape and outline are
             // applied by applyModifier too, so those changes with no image-edit must run it.
@@ -279,11 +296,16 @@ internal class IconDraftState(initialIcon: IconPackDrawable?) {
                 && options.outlineMode == OutlineMode.NONE -> base
             else -> trackGeneration { builder.applyModifier(base, options) }
         }
+        if (generation == vectorGeneration) modifiedVector = generated
     }
 
     suspend fun regenerateUpload(builder: IconPreviewBuilder, options: GenerationOptions) {
         val base = uploadBase
-        uploadIcon = if (base == null) null else trackGeneration { builder.applyModifier(base, options) }
+        val generation = ++uploadGeneration
+        val generated = if (base == null) null else trackGeneration {
+            builder.applyModifier(base, options)
+        }
+        if (generation == uploadGeneration) uploadIcon = generated
     }
 }
 
@@ -308,6 +330,7 @@ fun OptionsDialog(
     var textFontPath by rememberSaveable(globalFontPath) { mutableStateOf(globalFontPath) }
     var useVector by rememberSaveable { mutableStateOf(false) }
     var applicationIconVariant by rememberSaveable { mutableStateOf(ApplicationIconVariant.DEFAULT) }
+    var useFullApplicationIcon by rememberSaveable { mutableStateOf(false) }
     var invertMonochrome by rememberSaveable { mutableStateOf(false) }
     var materialYouScheme by rememberSaveable { mutableIntStateOf(0) }
     var iconColor by rememberSaveable(saver = colorSaver()) { mutableStateOf(Color.White) }
@@ -429,9 +452,9 @@ fun OptionsDialog(
 
     // Whether the app ships an official Material You <monochrome> layer. Apps without one use
     // Renkin's labelled generated fallback instead.
-    val appHasMaterialYouIcon = remember(app.icon) {
-        val icon = app.icon
-        icon.isAdaptiveIconDrawable() && (icon as AdaptiveIconDrawable).haveMonochrome()
+    val appHasAdaptiveIcon = remember(app.icon) { app.icon.isAdaptiveIconDrawable() }
+    val appHasMaterialYouIcon = remember(app.icon, appHasAdaptiveIcon) {
+        appHasAdaptiveIcon && (app.icon as AdaptiveIconDrawable).haveMonochrome()
     }
 
     val isMaterialYouVariant = source == Source.APPLICATION_ICON &&
@@ -510,6 +533,7 @@ fun OptionsDialog(
         textCase = textCase,
         textFontPath = textFontPath,
         applicationIconVariant = applicationIconVariant,
+        useFullApplicationIcon = useFullApplicationIcon,
         invertMonochrome = invertMonochrome,
         materialYouPackForeground = materialYouPackForeground,
         materialYouPackBackground = materialYouPackBackground,
@@ -721,9 +745,15 @@ fun OptionsDialog(
                                 selectedResourceId = customIconList.firstOrNull()?.resourceId,
                                 selectedCalendarPrefix = calendarPrefix.takeIf { calendarEnabled },
                                 appHasMaterialYouIcon = appHasMaterialYouIcon,
+                                appHasAdaptiveIcon = appHasAdaptiveIcon,
                                 applicationIconVariant = applicationIconVariant,
                                 onApplicationIconVariantChange = {
                                     applicationIconVariant = it
+                                    activateCreate()
+                                },
+                                useFullApplicationIcon = useFullApplicationIcon,
+                                onUseFullApplicationIconChange = {
+                                    useFullApplicationIcon = it
                                     activateCreate()
                                 },
                                 invertMonochrome = invertMonochrome,

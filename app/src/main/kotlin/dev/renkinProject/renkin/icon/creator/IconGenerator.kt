@@ -316,27 +316,39 @@ class IconGenerator(
     private fun generateImageFromApplication(
         application: PackageInfoStruct,
         imageEdit: ImageEdit): IconPackDrawable? {
+        val applicationIcon = application.icon.copyForRendering()
 
         // Material You variant: recolor the app's own <monochrome> layer directly — tint it with
         // the chosen foreground over the chosen background. No path-tracing (that produces line
         // art, issue #81), so this only runs for the plain (NONE) modifier.
         if (options.applicationIconVariant == ApplicationIconVariant.MATERIAL_YOU &&
-            imageEdit == ImageEdit.NONE && hasMonochromeLayer(application)) {
-            return generateMaterialYou(application)
+            imageEdit == ImageEdit.NONE && hasMonochromeLayer(applicationIcon)) {
+            return generateMaterialYou(applicationIcon)
         }
 
         if (options.applicationIconVariant == ApplicationIconVariant.MATERIAL_YOU) {
             // Apps without an official layer still get a clearly-labelled Renkin-generated
             // approximation. Rasterising the complete launcher icon preserves its optical size;
             // getAppIconBitmap extracts the adaptive foreground and would enlarge it here.
-            val bitmapIcon = application.icon.shrinkIfBiggerThan(500) ?: return null
+            val bitmapIcon = applicationIcon.shrinkIfBiggerThan(500) ?: return null
             val generated = generateMaterialYouFromOriginal(bitmapIcon)
             return if (imageEdit == ImageEdit.NONE) generated
             else imageEditPipeline.applyEdit(generated, imageEdit)
         }
-        // App icons are shown as their foreground everywhere (the launcher's own background
-        // layer is not part of what Renkin exports), so every modifier starts from it too.
-        val bitmapIcon = getAppIconBitmap(application) ?: return null
+        if (options.applicationIconVariant == ApplicationIconVariant.DEFAULT &&
+            options.useFullApplicationIcon
+        ) {
+            val completeIcon = applicationIcon.shrinkIfBiggerThan(500) ?: return null
+            return generateImage(
+                bitmapIcon = completeIcon,
+                parsedIcon = null,
+                imageEdit = imageEdit,
+                mode = colorizeMode
+            )
+        }
+        // The standard variant deliberately exports only the foreground; the complete adaptive
+        // appearance is handled above so its background reaches modifiers as part of one frame.
+        val bitmapIcon = getAppIconBitmap(applicationIcon) ?: return null
         if (options.applicationIconVariant == ApplicationIconVariant.MONOCHROME) {
             // This is deliberately based on the regular launcher artwork, not the optional
             // Material You layer: every app is supported and its original design stays intact.
@@ -347,14 +359,12 @@ class IconGenerator(
         return generateImage(bitmapIcon, parsedIcon, imageEdit, colorizeMode)
     }
 
-    /** True when [application]'s launcher icon ships a Material You `<monochrome>` layer (API 33+). */
-    private fun hasMonochromeLayer(application: PackageInfoStruct): Boolean {
-        val icon = application.icon
+    /** True when [icon] ships a Material You `<monochrome>` layer (API 33+). */
+    private fun hasMonochromeLayer(icon: Drawable): Boolean {
         return icon.isAdaptiveIconDrawable() && (icon as AdaptiveIconDrawable).haveMonochrome()
     }
 
-    private fun generateMaterialYou(application: PackageInfoStruct): IconPackDrawable? {
-        val icon = application.icon
+    private fun generateMaterialYou(icon: Drawable): IconPackDrawable? {
         if (!icon.isAdaptiveIconDrawable()) return null
         // Read the monochrome layer directly — it may be any Drawable type (often an InsetDrawable
         // wrapping a vector), so we can't rely on getAppIconBitmap's Bitmap/Vector-only path.
@@ -607,8 +617,8 @@ class IconGenerator(
         return unwrapped?.takeIf { it is BitmapDrawable || it is VectorDrawable }
     }
 
-    private fun getAppIconBitmap(app: PackageInfoStruct, maxSize: Int = 500): Bitmap? {
-        var newIcon = app.icon
+    private fun getAppIconBitmap(icon: Drawable, maxSize: Int = 500): Bitmap? {
+        var newIcon = icon
 
         if (newIcon.isAdaptiveIconDrawable()) {
             val adaptiveIcon = newIcon as AdaptiveIconDrawable
@@ -621,6 +631,9 @@ class IconGenerator(
 
         return newIcon.shrinkIfBiggerThan(maxSize)
     }
+
+    private fun Drawable.copyForRendering(): Drawable =
+        constantState?.newDrawable(ctx.resources)?.mutate() ?: this
 
     private fun getDefaultIcon(
         bitmapIcon: Bitmap,

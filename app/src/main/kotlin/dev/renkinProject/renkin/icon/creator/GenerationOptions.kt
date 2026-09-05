@@ -171,7 +171,8 @@ data class GenerationOptions(
     // CHANGES_WITH_MATERIAL_YOU_COLORS. Null colours preserve the pack's originals.
     val materialYouPackForeground: Int? = null,
     val materialYouPackBackground: Int? = null,
-    val materialYouPackStrokeScale: Float = 1f
+    val materialYouPackStrokeScale: Float = 1f,
+    val useFullApplicationIcon: Boolean = false
 ) {
     companion object {
         /**

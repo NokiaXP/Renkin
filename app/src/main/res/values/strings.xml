@@ -444,7 +444,9 @@
     <string name="variantDefault">Default</string>
     <string name="variantMaterialYou">Material You</string>
     <string name="variantMonochrome">Monochrome</string>
-    <string name="variantDefaultHint">Uses the app\'s normal icon, unchanged.</string>
+    <string name="variantDefaultHint">Uses the app icon\'s foreground without its adaptive background.</string>
+    <string name="fullApplicationIcon">Full app icon</string>
+    <string name="fullApplicationIconHint">Copies the complete app icon, including its adaptive background. Modifiers affect the whole icon.</string>
     <string name="materialYouRecolorHint">Uses the official Material You icon provided by this app, recolored to your choice.</string>
     <string name="materialYouGeneratedTitle">No official Material You icon</string>
     <string name="materialYouGeneratedHint">Renkin generates an unofficial version from the original artwork.</string>
