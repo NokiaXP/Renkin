@@ -66,7 +66,8 @@ class IconGeneratorTest {
         colorizerGradientColors: List<Int> = listOf(Color.BLACK),
         colorizerGradientAngle: Float = 0f,
         color: Int = Color.BLACK,
-        bgColor: Int = Color.WHITE
+        bgColor: Int = Color.WHITE,
+        useFullApplicationIcon: Boolean = false
     ) = GenerationOptions(
         primarySource = source,
         primaryImageEdit = imageEdit,
@@ -90,7 +91,8 @@ class IconGeneratorTest {
         colorizerMode = colorizerMode,
         colorizerGradientType = colorizerGradientType,
         colorizerGradientColors = colorizerGradientColors,
-        colorizerGradientAngle = colorizerGradientAngle
+        colorizerGradientAngle = colorizerGradientAngle,
+        useFullApplicationIcon = useFullApplicationIcon
     )
 
     private fun app(
@@ -109,6 +111,12 @@ class IconGeneratorTest {
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         bitmap.eraseColor(Color.BLUE)
         return BitmapIconDrawable(bitmap)
+    }
+
+    private fun Bitmap.containsColor(color: Int): Boolean {
+        val pixels = IntArray(width * height)
+        getPixels(pixels, 0, width, 0, 0, width, height)
+        return color in pixels
     }
 
     /**
@@ -293,6 +301,31 @@ class IconGeneratorTest {
         assertEquals(Color.red(monochromePixel), Color.green(monochromePixel))
         assertEquals(Color.green(monochromePixel), Color.blue(monochromePixel))
         assertTrue(monochromePixel != originalColor)
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun fullApplicationIconKeepsTheAdaptiveBackground() {
+        val foreground = Bitmap.createBitmap(108, 108, Bitmap.Config.ARGB_8888).apply {
+            for (y in 42 until 66) for (x in 42 until 66) setPixel(x, y, Color.RED)
+        }
+        val adaptive = android.graphics.drawable.AdaptiveIconDrawable(
+            ColorDrawable(Color.BLUE),
+            BitmapDrawable(context.resources, foreground)
+        )
+        val sourceApp = app(icon = adaptive)
+
+        val foregroundOnly = generateOnce(
+            options(source = Source.APPLICATION_ICON),
+            sourceApp
+        )!!.toBitmap()
+        val complete = generateOnce(
+            options(source = Source.APPLICATION_ICON, useFullApplicationIcon = true),
+            sourceApp
+        )!!.toBitmap()
+
+        assertFalse(foregroundOnly.containsColor(Color.BLUE))
+        assertTrue(complete.containsColor(Color.BLUE))
     }
 
     @Test
