@@ -94,6 +94,7 @@ import dev.renkinProject.renkin.icon.creator.ColorizerStyle
 import dev.renkinProject.renkin.icon.creator.SegmentLayer
 import dev.renkinProject.renkin.icon.creator.decodeSegmentLayer
 import dev.renkinProject.renkin.icon.creator.decodeColorizerStyle
+import dev.renkinProject.renkin.drawable.MaterialYouPackEditState
 import dev.renkinProject.renkin.icon.creator.encodeColorizerStyle
 import dev.renkinProject.renkin.icon.creator.encode
 import dev.renkinProject.renkin.icon.creator.GradientType
@@ -333,17 +334,17 @@ private fun Any?.toColorizerStyle(fallback: Int): ColorizerStyle = when (this) {
 } ?: ColorizerStyle(firstColor = fallback)
 
 @Stable
-internal class MaterialYouPackAdjustmentState {
-    var selectedScheme by mutableIntStateOf(-1)
+internal class MaterialYouPackAdjustmentState(initial: MaterialYouPackEditState? = null) {
+    var selectedScheme by mutableIntStateOf(initial?.selectedScheme ?: -1)
     // Full styles, not plain colours: a pack's Material You icon keeps only the first stop (its
     // layers are paths), but the generated variant can carry the whole gradient.
     var customForeground by mutableStateOf(
-        ColorizerStyle(firstColor = android.graphics.Color.WHITE)
+        initial?.customForeground ?: ColorizerStyle(firstColor = android.graphics.Color.WHITE)
     )
     var customBackground by mutableStateOf(
-        ColorizerStyle(firstColor = android.graphics.Color.BLACK)
+        initial?.customBackground ?: ColorizerStyle(firstColor = android.graphics.Color.BLACK)
     )
-    var strokeScale by mutableFloatStateOf(1f)
+    var strokeScale by mutableFloatStateOf(initial?.strokeScale ?: 1f)
 
     fun reset() {
         selectedScheme = -1

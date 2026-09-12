@@ -172,6 +172,9 @@ data class GenerationOptions(
     val materialYouPackForeground: Int? = null,
     val materialYouPackBackground: Int? = null,
     val materialYouPackStrokeScale: Float = 1f,
+    val materialYouPackSelectedScheme: Int = -1,
+    val materialYouPackCustomForeground: ColorizerStyle? = null,
+    val materialYouPackCustomBackground: ColorizerStyle? = null,
     val useFullApplicationIcon: Boolean = false
 ) {
     companion object {

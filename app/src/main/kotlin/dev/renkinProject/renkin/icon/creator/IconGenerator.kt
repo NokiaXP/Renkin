@@ -27,6 +27,8 @@ import dev.renkinProject.renkin.data.ImageEdit
 import dev.renkinProject.renkin.data.Source
 import dev.renkinProject.renkin.data.TextType
 import dev.renkinProject.renkin.drawable.ADAPTIVE_ICON_SCALE
+import dev.renkinProject.renkin.drawable.AdaptiveIconPackDrawable
+import dev.renkinProject.renkin.drawable.MaterialYouPackEditState
 import dev.renkinProject.renkin.drawable.BaseTextDrawable
 import dev.renkinProject.renkin.drawable.BitmapIconDrawable
 import dev.renkinProject.renkin.drawable.ForegroundIconDrawable
@@ -256,6 +258,12 @@ class IconGenerator(
     }
 
     fun colorizeFromIconPack(iconPackName: String, icon: ResourceDrawable): IconPackDrawable? {
+        preservePackLayers(iconPackName, icon)?.let {
+            return when (options.primaryImageEdit) {
+                ImageEdit.COLORIZE, ImageEdit.COLORIZE_SEGMENTS -> imageEditPipeline.applyEdit(it, options.primaryImageEdit)
+                else -> it
+            }
+        }
         val bitmapIcon = getIconBitmap(icon.drawable) ?: return null
         val changesWithMaterialYou = packChangesWithMaterialYouColors(iconPackName)
         val parsedIcon = exportIconPackXML(iconPackName, icon).let {
@@ -297,6 +305,10 @@ class IconGenerator(
         customIcon: ResourceDrawable? = null
     ): IconPackDrawable? {
         val resIcon = customIcon ?: iconPack.getApplicationIcon(application.toInstalledApplication()) ?: return null
+
+        preservePackLayers(iconPack.iconPackName, resIcon)?.let {
+            return imageEditPipeline.applyEdit(it, imageEdit)
+        }
 
         val bitmapIcon = getIconBitmap(resIcon.drawable) ?: return null
         val changesWithMaterialYou = packChangesWithMaterialYouColors(iconPack.iconPackName)
@@ -357,6 +369,48 @@ class IconGenerator(
         val parsedIcon = parseApplicationIcon(application)
 
         return generateImage(bitmapIcon, parsedIcon, imageEdit, colorizeMode)
+    }
+
+    private fun preservePackLayers(packName: String, resource: ResourceDrawable): AdaptiveIconPackDrawable? {
+        if (options.themed || !resource.drawable.isAdaptiveIconDrawable()) return null
+        val source = resource.drawable.copyForRendering() as AdaptiveIconDrawable
+        val changesWithMaterialYou = packChangesWithMaterialYouColors(packName)
+        val sourceMonochrome = if (source.haveMonochrome()) source.monochrome else {
+            resourceResolver.getResources(packName)?.let {
+                IconParser.readMonochromeLayer(it, resource.resourceId)
+            }
+        }
+        val original = if (changesWithMaterialYou) {
+            AdaptiveIconPackDrawable.capture(source, sourceMonochrome)
+        } else null
+        val restyle = options.materialYouPackForeground != null || options.materialYouPackBackground != null ||
+            options.materialYouPackStrokeScale != 1f
+        val styled = if (restyle && changesWithMaterialYou) {
+            val editable = if (options.materialYouPackStrokeScale != 1f) {
+                exportIconPackXML(packName, ResourceDrawable(resource.resourceId, source)) ?: source
+            } else source
+            styleMaterialYouPackIcon(editable) as? AdaptiveIconDrawable ?: source
+        } else source
+        val monochrome = if (styled.haveMonochrome()) styled.monochrome else {
+            resourceResolver.getResources(packName)?.let {
+                IconParser.readMonochromeLayer(it, resource.resourceId)
+            }
+        }
+        val editState = if (changesWithMaterialYou) MaterialYouPackEditState(
+            selectedScheme = options.materialYouPackSelectedScheme,
+            customForeground = options.materialYouPackCustomForeground
+                ?: ColorizerStyle(firstColor = android.graphics.Color.WHITE),
+            customBackground = options.materialYouPackCustomBackground
+                ?: ColorizerStyle(firstColor = android.graphics.Color.BLACK),
+            strokeScale = options.materialYouPackStrokeScale
+        ) else null
+        return AdaptiveIconPackDrawable.capture(
+            styled,
+            monochrome,
+            editState,
+            originalForegroundPng = original?.foregroundPng.takeIf { restyle },
+            originalBackgroundPng = original?.backgroundPng.takeIf { restyle }
+        )
     }
 
     /** True when [icon] ships a Material You `<monochrome>` layer (API 33+). */
@@ -781,7 +835,7 @@ class IconGenerator(
 
     private fun styleMaterialYouPackIcon(parsedIcon: Drawable?): Drawable? {
         val adaptive = parsedIcon as? AdaptiveIconDrawable ?: return parsedIcon
-        val vector = adaptive.foregroundVectorOrNull() ?: return parsedIcon
+        val vector = adaptive.foregroundVectorOrNull()
 
         val modifierStrokeScale = options.materialYouPackStrokeScale.coerceIn(0.5f, 2f)
         // Lawnicons ships real strokes (for example _10.svg is 12 units in a 192-unit
@@ -789,30 +843,37 @@ class IconGenerator(
         // centred 100% means the pack's real stroke width. The same 500 px render is used by
         // browser tiles, the comparison header, modifiers, persistence and APK export so changing
         // a modifier cannot silently switch to a thinner preview raster.
-        vector.root.scaleStrokePaths(effectiveMaterialYouPackStrokeScale(modifierStrokeScale))
+        vector?.root?.scaleStrokePaths(effectiveMaterialYouPackStrokeScale(modifierStrokeScale))
         options.materialYouPackForeground?.let { foreground ->
-            vector.root.setReferenceColorPaths(SolidColor(Color(foreground)))
+            if (vector != null) {
+                vector.root.setReferenceColorPaths(SolidColor(Color(foreground)))
+                vector.tintColor = Color.Unspecified
+            } else {
+                adaptive.foreground.setTint(foreground)
+            }
         }
 
         val background = options.materialYouPackBackground?.let(::ColorDrawable)
             ?: adaptive.background
         val monochrome = if (adaptive.haveMonochrome()) adaptive.monochrome else null
+        monochrome?.foregroundVectorOrNull()?.root
+            ?.scaleStrokePaths(effectiveMaterialYouPackStrokeScale(modifierStrokeScale))
         return newAdaptiveIconDrawable(adaptive.foreground, background, monochrome)
     }
 
     private fun parseIconPackXML(iconPackName: String, iconDrawable: ResourceDrawable): Drawable? {
-        if (!isVectorDrawable(iconDrawable.drawable)) return null
+        if (!iconDrawable.drawable.isAdaptiveIconDrawable() && !isVectorDrawable(iconDrawable.drawable)) return null
 
         val res = resourceResolver.getResources(iconPackName) ?: return null
-        val icon = IconParser.parseDrawable(res, iconDrawable.drawable, iconDrawable.resourceId)
+        val icon = IconParser.parseDrawable(res, iconDrawable.drawable, iconDrawable.resourceId, preserveFrameworkInsets = !options.themed)
 
         if (!icon.isAdaptiveIconDrawable()) return null
 
-        val vectorIcon = icon.foregroundVectorOrNull() ?: return null
+        val vectorIcon = icon.foregroundVectorOrNull()
 
         // Material You packs such as Lawnicons intentionally define their own stroke widths
         // and adaptive inset. Other packs keep the established normalization behaviour.
-        if (!packChangesWithMaterialYouColors(iconPackName)) {
+        if (options.themed && vectorIcon != null && !packChangesWithMaterialYouColors(iconPackName)) {
             val stroke = vectorIcon.viewportHeight / 48 //1F at 48
             vectorIcon.root.editStrokePaths(stroke)
         }

@@ -89,8 +89,8 @@ data class BackupPref(val tag: String, val value: Any) {
  * round-trip is unit-testable; [BackupManager] owns the surrounding ZIP and stores.
  */
 object BackupCodec {
-    /** Bump when the schema changes; import refuses files newer than it understands. */
-    const val FORMAT_VERSION = 1
+    // Version 2 carries layered adaptive payloads; older importers must not silently drop those icons.
+    const val FORMAT_VERSION = 2
 
     fun encode(data: BackupData): String {
         val root = JSONObject()
