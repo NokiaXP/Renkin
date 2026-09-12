@@ -59,6 +59,7 @@ import dev.renkinProject.renkin.data.getStringValue
 import dev.renkinProject.renkin.icon.creator.TextCase
 import android.graphics.drawable.AdaptiveIconDrawable
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import dev.renkinProject.renkin.drawable.BitmapIconDrawable
 import dev.renkinProject.renkin.drawable.IconPackDrawable
 import dev.renkinProject.renkin.drawable.haveMonochrome
@@ -68,6 +69,7 @@ import dev.renkinProject.renkin.drawable.ResourceDrawable
 import dev.renkinProject.renkin.drawable.toSafeBitmapOrNull
 import dev.renkinProject.renkin.icon.creator.GenerationOptions
 import dev.renkinProject.renkin.icon.creator.ApplicationIconVariant
+import dev.renkinProject.renkin.drawable.AdaptiveIconPackDrawable
 import dev.renkinProject.renkin.icon.creator.IconShape
 import dev.renkinProject.renkin.icon.creator.OutlineMode
 import dev.renkinProject.renkin.icon.creator.IconSortOrder
@@ -386,9 +388,13 @@ fun OptionsDialog(
     // bulk refresh's own (hero-source) icons only, never to hand-picked ones. Per-app outline
     // stays an explicit choice in the Modifier tab.
     val adjustments = rememberSaveable(saver = AdjustmentState.Saver) { AdjustmentState() }
+    val storedMaterialYouPackState = remember(app.baseIcon, app.createdIcon) {
+        ((app.baseIcon ?: app.createdIcon) as? AdaptiveIconPackDrawable)?.materialYouEditState
+    }
     val materialYouPackAdjustments = rememberSaveable(
+        storedMaterialYouPackState,
         saver = MaterialYouPackAdjustmentState.Saver
-    ) { MaterialYouPackAdjustmentState() }
+    ) { MaterialYouPackAdjustmentState(storedMaterialYouPackState) }
 
     // Browsing a calendar icon must not persist its rotation choice until Apply.
     var calendarEnabled by rememberSaveable { mutableStateOf(app.calendarEnabled) }
@@ -462,9 +468,13 @@ fun OptionsDialog(
     val materialYouSchemes = rememberMaterialYouSchemes()
     val selectedMaterialYouPackIcon = draft.origin == IconOrigin.CREATE &&
         source == Source.ICON_PACK &&
-        customIconList.firstOrNull()?.drawable?.isAdaptiveIconDrawable() == true &&
-        iconPacks.firstOrNull { it.packageName == iconPack }
-            ?.changesWithMaterialYouColors == true
+        (if (customIconList.isEmpty()) {
+            storedMaterialYouPackState != null
+        } else {
+            customIconList.first().drawable.isAdaptiveIconDrawable() &&
+                iconPacks.firstOrNull { it.packageName == iconPack }
+                    ?.changesWithMaterialYouColors == true
+        })
     val isCustomScheme = materialYouScheme >= materialYouSchemes.size
     val scheme = materialYouSchemes.getOrNull(materialYouScheme)
     // The generated approximation maps the regular artwork's light/dark roles in reverse. Swap
@@ -541,7 +551,10 @@ fun OptionsDialog(
         backgroundStyle = effectiveBackgroundStyle,
         materialYouPackStrokeScale = if (selectedMaterialYouPackIcon) {
             materialYouPackAdjustments.strokeScale
-        } else 1f
+        } else 1f,
+        materialYouPackSelectedScheme = materialYouPackAdjustments.selectedScheme,
+        materialYouPackCustomForeground = materialYouPackAdjustments.customForeground,
+        materialYouPackCustomBackground = materialYouPackAdjustments.customBackground
     ).withModifierAdjustments(
         adjustments = adjustments,
         imageEdit = imageEdit,
@@ -554,7 +567,10 @@ fun OptionsDialog(
     val browserOptions = generatingOptions.copy(
         materialYouPackForeground = null,
         materialYouPackBackground = null,
-        materialYouPackStrokeScale = 1f
+        materialYouPackStrokeScale = 1f,
+        materialYouPackSelectedScheme = -1,
+        materialYouPackCustomForeground = null,
+        materialYouPackCustomBackground = null
     )
 
     // The Colorize sheet previews a draft style that is NOT applied yet, so it runs the real
@@ -1310,10 +1326,10 @@ private fun OptionsBottomBar(
 }
 
 /**
- * Wallpaper-derived colour schemes (foreground over background) for tinting the Material You layer,
- * pulled from the live Material You palette — the three accent hues plus a neutral, and an inverted
- * accent. These harmonise with the user's wallpaper, like Android's own themed-icon colours. On
- * Android < 12 (no dynamic colours) it falls back to plain light-on-dark / dark-on-light.
+ * Android dynamic colour schemes (foreground over background) for tinting the Material You layer:
+ * the three accent hues plus a neutral, and an inverted accent. OEM launchers may use a separate
+ * private wallpaper palette which third-party apps cannot read. On Android < 12 it falls back to
+ * plain light-on-dark / dark-on-light.
  */
 @Composable
 private fun rememberMaterialYouSchemes(): List<Pair<Color, Color>> {
@@ -1321,7 +1337,8 @@ private fun rememberMaterialYouSchemes(): List<Pair<Color, Color>> {
         return listOf(Color.White to Color.Black, Color.Black to Color.White)
     }
     val context = LocalContext.current
-    return remember {
+    val configuration = LocalConfiguration.current
+    return remember(configuration) {
         fun c(id: Int) = Color(context.resources.getColor(id, context.theme))
         listOf(
             c(android.R.color.system_accent1_100) to c(android.R.color.system_accent1_800),

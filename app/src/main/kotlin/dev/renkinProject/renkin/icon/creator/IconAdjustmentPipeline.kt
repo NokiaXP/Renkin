@@ -7,6 +7,8 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import dev.renkinProject.renkin.drawable.BitmapIconDrawable
+import dev.renkinProject.renkin.drawable.ADAPTIVE_ICON_SCALE
+import dev.renkinProject.renkin.drawable.AdaptiveIconPackDrawable
 import dev.renkinProject.renkin.drawable.IconPackDrawable
 import dev.renkinProject.renkin.drawable.ImageVectorDrawable
 import dev.renkinProject.renkin.drawable.InsetIconDrawable
@@ -27,6 +29,16 @@ internal class IconAdjustmentPipeline(
         val shaped = options.iconShape != IconShape.NONE
         val outlined = options.outlineMode != OutlineMode.NONE
         if (!offset && options.iconScale == 1f && !shaped && !outlined) return icon
+
+        if (icon is AdaptiveIconPackDrawable && !shaped && !outlined) {
+            val layerOptions = options.copy(
+                iconOffsetX = options.iconOffsetX / ADAPTIVE_ICON_SCALE,
+                iconOffsetY = options.iconOffsetY / ADAPTIVE_ICON_SCALE
+            )
+            val layerAdjustments = IconAdjustmentPipeline(resources, layerOptions)
+            fun transform(bitmap: Bitmap): Bitmap = layerAdjustments.apply(BitmapIconDrawable(bitmap)).toBitmap()
+            return icon.withForeground(transform(icon.foreground), icon.monochrome?.let(::transform))
+        }
 
         val vectorAdjusted = modifierVector(icon)?.withModifierTransform(
             options.iconScale,

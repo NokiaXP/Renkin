@@ -22,7 +22,7 @@ import dev.renkinProject.renkin.vector.VectorEditor.Companion.resizeTo
 import dev.renkinProject.renkin.vector.VectorExporter.Companion.toXml
 import dev.renkinProject.renkin.vector.VectorRenderer.Companion.renderToCanvas
 
-class ImageVectorDrawable(imageVector: ImageVector): IconPackDrawable() {
+class ImageVectorDrawable(imageVector: ImageVector, private val scaleStrokesWithBounds: Boolean = false): IconPackDrawable() {
     var name: String = imageVector.name
     var defaultWidth: Dp = imageVector.defaultWidth
     var defaultHeight: Dp = imageVector.defaultHeight
@@ -34,7 +34,7 @@ class ImageVectorDrawable(imageVector: ImageVector): IconPackDrawable() {
     var root: MutableVectorGroup = MutableVectorGroup(imageVector.root)
 
     /** A detached mutable copy for editors/exporters that transform vectors in place. */
-    fun deepCopy(): ImageVectorDrawable = ImageVectorDrawable(toImageVector())
+    fun deepCopy(): ImageVectorDrawable = ImageVectorDrawable(toImageVector(), scaleStrokesWithBounds)
 
     /**
      * Applies the Modifier tab's canvas-space position and scale directly to a detached vector.
@@ -147,7 +147,7 @@ class ImageVectorDrawable(imageVector: ImageVector): IconPackDrawable() {
         val checkpoint = canvas.save()
         canvas.translate(target.left.toFloat(), target.top.toFloat())
         canvas.clipRect(0, 0, target.width(), target.height())
-        this.renderToCanvas(canvas, targetWidth = target.width(), targetHeight = target.height())
+        this.renderToCanvas(canvas, nonScalingStroke = !scaleStrokesWithBounds, targetWidth = target.width(), targetHeight = target.height())
         canvas.restoreToCount(checkpoint)
     }
 

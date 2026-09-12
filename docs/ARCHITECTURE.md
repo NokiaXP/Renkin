@@ -204,6 +204,50 @@ smali class package must match IconPackBuilder's activity FQN string. Signing us
 file name (a package with several activities must not overwrite one icon with the other).
 Packs identify apps by `ComponentInfo` in appfilter.xml — never by name.
 
+### Adaptive icons imported from packs
+
+`AdaptiveIconPackDrawable` owns separate foreground/background PNG layers and an optional
+monochrome layer. Source vectors, bitmaps and drawable wrappers are rendered independently at
+750 px (108dp layer space); Android applies the adaptive mask and 1.5x viewport expansion only
+when composing the 500 px preview. Original layer insets are not removed or normalized. Layers
+stay compressed in memory, and the exported resources never reference another installed APK.
+
+Position/scale transform foreground and monochrome together while leaving the background in
+place. Colorize changes only the foreground; gradients retain its alpha. Shape, Outline,
+Remove background, Path, Edge and segment colorize consume the complete masked composition
+and produce a non-adaptive result. Global modifiers continue deriving from the saved base icon,
+so disabling a flattening modifier restores the adaptive layers. The app-icon source's
+"Full app icon" behaviour and the explicit global themed export remain separate policies.
+
+The existing rendered/base XML columns store a `renkin-adaptive-icon` payload. Version 2 also
+stores the selected Material You pack scheme, its custom styles, line weight and the original
+foreground/background when recolouring changed them. Reopening the per-app editor therefore
+restores both the adaptive type and its highlighted editing controls, and Original can restore
+the source layers without the source pack being installed. Version 1 layered payloads remain
+readable. `XmlNodeParser` validates the format before ordinary vector or inset decoding. Room
+stays at v18 because no columns or relational meaning change. Backup
+format 2 prevents older importers from silently losing this new drawable type; format 1
+archives remain readable. Already-flattened saved icons cannot recover their missing layers:
+the user must select their source again.
+
+Normal export writes a base bitmap fallback plus same-name `drawable-anydpi-v26` adaptive XML
+and, when available, `drawable-anydpi-v33` XML with monochrome. Each XML has a distinct archive
+path. `appfilter.xml` points to the versioned resource; `appmap.xml` and `theme_resources.xml`
+point directly to a legacy bitmap alias. Qualifiers select by Android version, not launcher
+capability: a launcher using appfilter on API 26+ must accept/render adaptive drawables itself.
+Monochrome is captured from the framework on API 33+, or from the selected source XML on older
+systems. A source variant available only under v33 cannot be selected by Android 26–32.
+
+Global themed builds additionally declare `org.icontheme.CHANGES_WITH_MATERIAL_YOU_COLORS` on
+their ADW theme intent filter. Smart Launcher uses that capability to reload packs whose resources
+refer to Material system colours when the wallpaper palette changes. Plain preserved adaptive
+icons do not declare it because their original colour layers are intentionally static.
+
+The Material You swatches in the per-app editor read Android's public `system_accent*` resources.
+They are refreshed when Android reports a configuration change. Some OEM launchers, including
+OnePlus modes that explicitly match the home wallpaper, calculate a separate private icon palette;
+Renkin cannot reproduce that launcher-only selection through the standard resource API.
+
 ## Testing
 
 - Pure JVM unit tests for pure functions (`DataPreferencesTest`, `ColorHexTest`).
