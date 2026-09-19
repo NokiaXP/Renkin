@@ -134,18 +134,41 @@ class IconPackBuildService internal constructor(
         )
     }
 
-    suspend fun install(iconPack: BuiltIconPack): ApkInstallOutcome =
+    suspend fun install(
+        iconPack: BuiltIconPack,
+        selectionOverride: InstallerSelection? = null
+    ): ApkInstallOutcome =
         withContext(Dispatchers.Default) {
             installOrReportConflict(iconPack.canBeInstalled) {
-                ApkInstaller(context).install(iconPack.uri, iconPack.packageName)
+                runInstall(iconPack, resolveInstaller(iconPack, selectionOverride))
             }
         }
 
-    suspend fun replace(iconPack: BuiltIconPack): ApkInstallOutcome =
+    suspend fun replace(
+        iconPack: BuiltIconPack,
+        selectionOverride: InstallerSelection? = null
+    ): ApkInstallOutcome =
         withContext(Dispatchers.Default) {
             replaceAfterConflict(
                 uninstall = { ApkUninstaller(context).uninstall(iconPack.packageName) },
-                install = { ApkInstaller(context).install(iconPack.uri, iconPack.packageName) }
+                install = {
+                    runInstall(iconPack, resolveInstaller(iconPack, selectionOverride))
+                }
             )
         }
+
+    private fun resolveInstaller(
+        iconPack: BuiltIconPack,
+        override: InstallerSelection?
+    ): InstallerSelection = override ?: iconPack.preferences.installerSelection()
+
+    private suspend fun runInstall(
+        iconPack: BuiltIconPack,
+        selection: InstallerSelection
+    ): ApkInstallOutcome = ApkInstaller(context).install(
+        iconPack.uri,
+        iconPack.packageName,
+        selection.method,
+        selection.externalComponent
+    )
 }

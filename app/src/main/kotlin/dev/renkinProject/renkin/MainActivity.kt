@@ -31,13 +31,18 @@ import androidx.datastore.preferences.preferencesDataStore
 import dev.renkinProject.renkin.data.UploadedImageStore
 import dev.renkinProject.renkin.data.isDarkModeEnabled
 import dev.renkinProject.renkin.data.WatchCheckIntervalKey
+import dev.renkinProject.renkin.data.AutoBackupIntervalKey
+import dev.renkinProject.renkin.data.AUTO_BACKUP_INTERVAL_OFF
 import dev.renkinProject.renkin.data.WATCH_CHECK_INTERVAL_DEFAULT
 import dev.renkinProject.renkin.data.getIntValue
 import dev.renkinProject.renkin.data.normalizeWatchCheckInterval
+import dev.renkinProject.renkin.data.normalizeAutoBackupInterval
 import dev.renkinProject.renkin.apk.IconPackBuilder
+import dev.renkinProject.renkin.apk.ExternalInstallAwaiter
 import dev.renkinProject.renkin.packages.ApplicationManager
 import dev.renkinProject.renkin.packages.IconPackCatalog
 import dev.renkinProject.renkin.service.WatchWorker
+import dev.renkinProject.renkin.service.AutoBackupWorker
 import dev.renkinProject.renkin.util.CrashReporter
 import dev.renkinProject.renkin.ui.*
 import dev.renkinProject.renkin.ui.theme.RenkinTheme
@@ -96,6 +101,14 @@ class MainActivity : ComponentActivity() {
                 .getIntValue(WatchCheckIntervalKey, WATCH_CHECK_INTERVAL_DEFAULT)
                 .let(::normalizeWatchCheckInterval)
             WatchWorker.schedulePeriodic(applicationContext, intervalMinutes)
+            val autoBackupHours = applicationContext.dataStore.data.first()
+                .getIntValue(AutoBackupIntervalKey, AUTO_BACKUP_INTERVAL_OFF)
+                .let(::normalizeAutoBackupInterval)
+            AutoBackupWorker.schedule(
+                applicationContext,
+                autoBackupHours,
+                androidx.work.ExistingPeriodicWorkPolicy.KEEP
+            )
             // Drop crash logs older than the retention window (and migrate any legacy log).
             CrashReporter.prune(applicationContext)
         }
@@ -114,38 +127,40 @@ class MainActivity : ComponentActivity() {
             val colorPresets by viewModel.colorPresets.collectAsState()
             val modifierPresets by viewModel.modifierPresets.collectAsState()
 
-            CompositionLocalProvider(
-                LocalMainActivity provides this,
-                LocalToaster provides toaster
-            ) {
-                ProvideColorPresets(
-                    presets = colorPresets,
-                    onSave = viewModel::saveColorPreset,
-                    onDelete = viewModel::deleteColorPreset
+            ProvideAdaptiveLayoutInfo(this@MainActivity) {
+                CompositionLocalProvider(
+                    LocalMainActivity provides this,
+                    LocalToaster provides toaster
                 ) {
-                    ProvideModifierPresets(
-                        presets = modifierPresets,
-                        onSave = viewModel::saveModifierPreset,
-                        onUpdate = viewModel::updateModifierPreset,
-                        onRename = viewModel::renameModifierPreset,
-                        onMarkUsed = viewModel::markModifierPresetUsed,
-                        onDelete = viewModel::deleteModifierPreset
+                    ProvideColorPresets(
+                        presets = colorPresets,
+                        onSave = viewModel::saveColorPreset,
+                        onDelete = viewModel::deleteColorPreset
                     ) {
-                        RenkinTheme(darkMode) {
-                            Surface(
-                                modifier = Modifier.fillMaxSize(),
-                                color = MaterialTheme.colorScheme.background
-                            ) {
-                                ToastHost(toaster)
-                                MainColumn(viewModel.iconPacks)
+                        ProvideModifierPresets(
+                            presets = modifierPresets,
+                            onSave = viewModel::saveModifierPreset,
+                            onUpdate = viewModel::updateModifierPreset,
+                            onRename = viewModel::renameModifierPreset,
+                            onMarkUsed = viewModel::markModifierPresetUsed,
+                            onDelete = viewModel::deleteModifierPreset
+                        ) {
+                            RenkinTheme(darkMode) {
+                                Surface(
+                                    modifier = Modifier.fillMaxSize(),
+                                    color = MaterialTheme.colorScheme.background
+                                ) {
+                                    ToastHost(toaster)
+                                    MainColumn(viewModel.iconPacks)
 
-                                if (crashPending) {
-                                    CrashReportDialog(
-                                        onDismiss = {
-                                            CrashReporter.markCrashesSeen(this@MainActivity)
-                                            crashPending = false
-                                        }
-                                    )
+                                    if (crashPending) {
+                                        CrashReportDialog(
+                                            onDismiss = {
+                                                CrashReporter.markCrashesSeen(this@MainActivity)
+                                                crashPending = false
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -194,6 +209,13 @@ class MainActivity : ComponentActivity() {
                 viewModel.onIconPackInstalled(newPack.packageName, newPack.applicationName)
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Third-party installers such as InstallerX use a translucent/dialog Activity. Renkin
+        // stays STARTED underneath it, so cancellation returns through onResume(), not onStart().
+        ExternalInstallAwaiter.onRenkinForegrounded()
     }
 
     private fun handleWatchIntent(intent: Intent?) {

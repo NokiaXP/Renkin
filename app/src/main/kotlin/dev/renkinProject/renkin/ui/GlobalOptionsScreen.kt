@@ -47,7 +47,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -92,6 +91,7 @@ import dev.renkinProject.renkin.data.GlobalApplyCustomKey
 import dev.renkinProject.renkin.data.GlobalApplyExistingKey
 import dev.renkinProject.renkin.data.GlobalApplyGeneratedKey
 import dev.renkinProject.renkin.data.GlobalColorizeFlatKey
+import dev.renkinProject.renkin.data.GlobalColorizeLightenKey
 import dev.renkinProject.renkin.data.GlobalColorizeInverseKey
 import dev.renkinProject.renkin.data.GlobalColorizeKey
 import dev.renkinProject.renkin.data.GlobalColorizeMonochromeKey
@@ -237,8 +237,10 @@ internal class GlobalModifierState {
         outlineStyle = preferences.colorStyle(OutlineStyleKeys, Color.Black)
         colorize = preferences.getBooleanValue(GlobalColorizeKey)
         val monochrome = preferences.getBooleanValue(GlobalColorizeMonochromeKey)
+        val flat = preferences.getBooleanValue(GlobalColorizeFlatKey) && !monochrome
         colorizerStyle = preferences.colorStyle(GlobalColorizerStyleKeys, Color.White).copy(
-            flat = preferences.getBooleanValue(GlobalColorizeFlatKey) && !monochrome,
+            flat = flat,
+            lighten = preferences.getBooleanValue(GlobalColorizeLightenKey) && !monochrome && !flat,
             monochrome = monochrome,
             inverse = preferences.getBooleanValue(GlobalColorizeInverseKey)
         )
@@ -413,6 +415,7 @@ internal class GlobalModifierState {
         mutable[GlobalColorizeKey] = colorize
         mutable.writeColorStyle(GlobalColorizerStyleKeys, colorizerStyle)
         mutable[GlobalColorizeFlatKey] = colorizerStyle.flat
+        mutable[GlobalColorizeLightenKey] = colorizerStyle.lighten
         mutable[GlobalColorizeMonochromeKey] = colorizerStyle.monochrome
         mutable[GlobalColorizeInverseKey] = colorizerStyle.inverse
         mutable[GlobalApplyGeneratedKey] = applyGenerated
@@ -446,6 +449,7 @@ internal class GlobalModifierState {
         themed = false,
         override = true,
         colorizeFlat = colorizerStyle.flat,
+        colorizeLighten = colorizerStyle.lighten,
         colorizeMonochrome = colorizerStyle.monochrome,
         colorizeInverse = colorizerStyle.inverse,
         colorizerMode = colorizerStyle.mode,
@@ -905,13 +909,20 @@ fun GlobalOptionsScreen(onClose: (editedKeys: Set<String>, applied: Boolean) -> 
                 }
             }
 
-            val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600
-            if (wide) {
+            val adaptiveLayoutInfo = LocalAdaptiveLayoutInfo.current
+            val paneLayout = horizontalPaneLayout(
+                availableWidth = adaptiveLayoutInfo.windowWidth,
+                preferredLeadingWidth = 360.dp,
+                minimumLeadingWidth = 320.dp,
+                minimumTrailingWidth = 360.dp,
+                separatingVerticalHinge = adaptiveLayoutInfo.separatingVerticalHinge
+            )
+            if (paneLayout != null) {
                 Row(Modifier.fillMaxSize()) {
                     Surface(
                         color = MaterialTheme.colorScheme.surfaceContainerLow,
                         modifier = Modifier
-                            .width(360.dp)
+                            .width(paneLayout.leadingWidth)
                             .fillMaxHeight()
                     ) {
                         Box(Modifier.fillMaxSize()) {
@@ -939,8 +950,8 @@ fun GlobalOptionsScreen(onClose: (editedKeys: Set<String>, applied: Boolean) -> 
                             )
                         }
                     }
-                    VerticalDivider()
-                    Column(Modifier.weight(1f)) {
+                    AdaptivePaneSeparator(paneLayout)
+                    Column(Modifier.width(paneLayout.trailingWidth)) {
                         PreviewModeBar(showBefore) { showBefore = it }
                         currentSection?.let { section ->
                             CurrentSectionBar(

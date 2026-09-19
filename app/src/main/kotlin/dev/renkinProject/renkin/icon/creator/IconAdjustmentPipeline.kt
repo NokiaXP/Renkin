@@ -7,6 +7,8 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import dev.renkinProject.renkin.drawable.BitmapIconDrawable
+import dev.renkinProject.renkin.drawable.ADAPTIVE_ICON_SCALE
+import dev.renkinProject.renkin.drawable.AdaptiveIconPackDrawable
 import dev.renkinProject.renkin.drawable.IconPackDrawable
 import dev.renkinProject.renkin.drawable.ImageVectorDrawable
 import dev.renkinProject.renkin.drawable.InsetIconDrawable
@@ -23,23 +25,34 @@ internal class IconAdjustmentPipeline(
     private val options: GenerationOptions
 ) {
     fun apply(icon: IconPackDrawable): IconPackDrawable {
+        if (!options.hasIconAdjustments()) return icon
         val offset = options.iconOffsetX != 0f || options.iconOffsetY != 0f
         val shaped = options.iconShape != IconShape.NONE
         val outlined = options.outlineMode != OutlineMode.NONE
-        if (!offset && options.iconScale == 1f && !shaped && !outlined) return icon
+        val shadowed = options.hasVisibleShadow()
+
+        if (icon is AdaptiveIconPackDrawable && !shaped && !outlined && !shadowed) {
+            val layerOptions = options.copy(
+                iconOffsetX = options.iconOffsetX / ADAPTIVE_ICON_SCALE,
+                iconOffsetY = options.iconOffsetY / ADAPTIVE_ICON_SCALE
+            )
+            val layerAdjustments = IconAdjustmentPipeline(resources, layerOptions)
+            fun transform(bitmap: Bitmap): Bitmap = layerAdjustments.apply(BitmapIconDrawable(bitmap)).toBitmap()
+            return icon.withForeground(transform(icon.foreground), icon.monochrome?.let(::transform))
+        }
 
         val vectorAdjusted = modifierVector(icon)?.withModifierTransform(
             options.iconScale,
             options.iconOffsetX,
             options.iconOffsetY
         )
-        if (vectorAdjusted != null && !shaped && !outlined) return vectorAdjusted
+        if (vectorAdjusted != null && !shaped && !outlined && !shadowed) return vectorAdjusted
 
         var bitmap = vectorAdjusted?.toModifierBitmap() ?: icon.toBitmap()
         if (bitmap.width <= 0 || bitmap.height <= 0) return icon
 
         val source = icon as? BitmapIconDrawable
-        val previewScaleToBake = previewScaleToBakeForShape(icon, shaped)
+        val previewScaleToBake = previewScaleToBakeForShape(icon, shaped || shadowed)
         if (previewScaleToBake != 1f) {
             bitmap = bitmap.scaleFromCenter(previewScaleToBake)
         }
@@ -79,12 +92,23 @@ internal class IconAdjustmentPipeline(
         if (shaped) {
             bitmap = applyShape(bitmap)
         }
+        if (shadowed) {
+            bitmap = IconShadow.apply(
+                source = bitmap,
+                blur = options.shadowBlur,
+                distance = options.shadowDistance,
+                angle = options.shadowAngle,
+                allDirections = options.shadowAllDirections,
+                style = options.shadowStyle,
+                opacity = options.shadowOpacity
+            )
+        }
 
         return BitmapIconDrawable(
             resources,
             bitmap,
-            exportAsAdaptiveIcon = if (shaped) false else source?.isAdaptiveIcon() ?: false,
-            previewScale = if (shaped) 1f else source?.previewScale ?: 1f
+            exportAsAdaptiveIcon = if (shaped || shadowed) false else source?.isAdaptiveIcon() ?: false,
+            previewScale = if (shaped || shadowed) 1f else source?.previewScale ?: 1f
         )
     }
 

@@ -359,6 +359,12 @@ private fun SaveModifierPresetDialog(
                 checked = ModifierPresetGroup.OUTLINE in groups,
                 onToggle = { toggle(ModifierPresetGroup.OUTLINE) }
             )
+            IncludeGroupRow(
+                title = stringResource(R.string.shadowTitle),
+                summary = shadowSummary(adjustments),
+                checked = ModifierPresetGroup.SHADOW in groups,
+                onToggle = { toggle(ModifierPresetGroup.SHADOW) }
+            )
             Text(
                 text = stringResource(R.string.modifierPresetPerIconNote),
                 style = MaterialTheme.typography.bodySmall,
@@ -711,6 +717,7 @@ private fun presetGroupSummary(payload: ModifierPresetPayload): String {
         if (payload.iconScale != null) add(stringResource(R.string.iconScale))
         payload.shape?.let { add(stringResource(R.string.iconShapeTitle)) }
         payload.outline?.let { add(stringResource(R.string.outlineTitle)) }
+        payload.shadow?.let { add(stringResource(R.string.shadowTitle)) }
     }.filter { it.isNotEmpty() }
     return parts.joinToString(" · ")
 }
@@ -735,6 +742,17 @@ private fun outlineSummary(adjustments: AdjustmentState): String = stringResourc
         OutlineMode.RECOLOR -> R.string.outlineRecolor
     }
 )
+
+@Composable
+private fun shadowSummary(adjustments: AdjustmentState): String = if (adjustments.shadowEnabled) {
+    stringResource(
+        R.string.modifierPresetShadowSummary,
+        adjustments.shadowBlur.roundToInt(),
+        (adjustments.shadowOpacity * 100).roundToInt()
+    )
+} else {
+    stringResource(R.string.shadowNone)
+}
 
 /** Group selection survives a process death as the group names, joined by a separator. */
 private fun modifierPresetGroupsSaver(): Saver<Set<ModifierPresetGroup>, String> = Saver(

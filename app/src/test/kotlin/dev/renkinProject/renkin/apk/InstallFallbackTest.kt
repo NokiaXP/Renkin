@@ -29,12 +29,24 @@ class InstallFallbackTest {
     }
 
     @Test
-    fun installationAdvanced_requiresANewOrHigherInstalledVersion() {
-        assertTrue(installationAdvanced(previousVersion = null, currentVersion = 1L))
-        assertTrue(installationAdvanced(previousVersion = 4L, currentVersion = 5L))
-        assertFalse(installationAdvanced(previousVersion = null, currentVersion = null))
-        assertFalse(installationAdvanced(previousVersion = 4L, currentVersion = 4L))
-        assertFalse(installationAdvanced(previousVersion = 5L, currentVersion = 4L))
+    fun installationChanged_acceptsSameVersionReinstallWithNewTimestamp() {
+        val installed = InstalledPackageState(versionCode = 4L, lastUpdateTime = 1_000L)
+
+        assertTrue(installationChanged(previous = null, current = installed))
+        assertTrue(
+            installationChanged(
+                previous = installed,
+                current = InstalledPackageState(versionCode = 5L, lastUpdateTime = 1_100L)
+            )
+        )
+        assertTrue(
+            installationChanged(
+                previous = installed,
+                current = InstalledPackageState(versionCode = 4L, lastUpdateTime = 1_100L)
+            )
+        )
+        assertFalse(installationChanged(previous = installed, current = installed))
+        assertFalse(installationChanged(previous = installed, current = null))
     }
 
     @Test

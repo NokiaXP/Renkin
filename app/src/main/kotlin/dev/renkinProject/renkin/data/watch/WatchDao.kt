@@ -37,6 +37,10 @@ interface WatchDao {
     suspend fun getActiveRules(): List<RuleWithDetails>
 
     @Transaction
+    @Query("SELECT * FROM watch_rule WHERE completed = 1")
+    suspend fun getCompletedRules(): List<RuleWithDetails>
+
+    @Transaction
     @Query("SELECT * FROM watch_rule WHERE id = :ruleId")
     suspend fun getRuleWithDetails(ruleId: Long): RuleWithDetails?
 
@@ -112,6 +116,9 @@ interface WatchDao {
 
     @Query("SELECT * FROM watch_state WHERE ruleId = :ruleId AND packageName = :packageName AND activityName = :activityName AND iconPackPackage = :iconPackPackage")
     suspend fun getState(ruleId: Long, packageName: String, activityName: String, iconPackPackage: String): WatchState?
+
+    @Query("SELECT * FROM watch_state WHERE ruleId = :ruleId")
+    suspend fun getStatesForRule(ruleId: Long): List<WatchState>
 
     /** Drops baselines no longer referenced by their owning active rule. */
     @Query(

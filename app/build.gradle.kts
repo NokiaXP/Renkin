@@ -106,6 +106,9 @@ dependencies {
     implementation(libs.arscLib)
     implementation(libs.ackpine.core)
     implementation(libs.ackpine.ktx)
+    implementation(libs.ackpine.shizuku)
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
     implementation(libs.apksigner.compat)
 
     //Compose
@@ -116,6 +119,7 @@ dependencies {
     implementation(libs.androidx.material3.android)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.window)
     implementation(libs.colorpicker.compose)
     implementation("androidx.compose.material:material-icons-extended")
 

@@ -21,10 +21,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.InstallMobile
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.School
@@ -46,6 +51,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -70,16 +76,24 @@ import dev.renkinProject.renkin.BuildConfig
 import dev.renkinProject.renkin.MainViewModel
 import dev.renkinProject.renkin.R
 import dev.renkinProject.renkin.apk.ApplicationProvider
+import dev.renkinProject.renkin.apk.installerSelection
 import dev.renkinProject.renkin.data.DARK_MODE_DEFAULT
 import dev.renkinProject.renkin.data.DarkMode
 import dev.renkinProject.renkin.data.DarkModeKey
+import dev.renkinProject.renkin.data.InstallMethod
+import dev.renkinProject.renkin.data.AskInstallerEveryTimeKey
+import dev.renkinProject.renkin.data.AUTO_BACKUP_INTERVAL_OFF
 import dev.renkinProject.renkin.data.getDarkModeLabels
 import dev.renkinProject.renkin.data.getEnumValue
+import dev.renkinProject.renkin.data.getPreferencesValue
+import dev.renkinProject.renkin.data.getBooleanValue
 import dev.renkinProject.renkin.data.transfer.BackupManager
 import dev.renkinProject.renkin.util.CrashReporter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.DateFormat
+import java.util.Date
 
 /**
  * Fullscreen settings screen (Mihon-style): a plain top bar with a back arrow and the options
@@ -94,11 +108,25 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
 
     var showStats by rememberSaveable { mutableStateOf(false) }
     var showCrashLogs by rememberSaveable { mutableStateOf(false) }
+    var showWhatsNew by rememberSaveable { mutableStateOf(false) }
     var showAbout by rememberSaveable { mutableStateOf(false) }
     var confirmClearIcons by rememberSaveable { mutableStateOf(false) }
     var showIpsBackupWarning by rememberSaveable { mutableStateOf(false) }
+    var showInstallerPicker by rememberSaveable { mutableStateOf(false) }
     var backupCheckInProgress by remember { mutableStateOf(false) }
+    var pendingAutoBackupInterval by rememberSaveable { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
+    val installerSelection = prefs.getPreferencesValue().installerSelection()
+    val askInstallerEveryTime = prefs.getBooleanValue(AskInstallerEveryTimeKey)
+    val installerLabel by produceState<String?>(null, installerSelection) {
+        value = viewModel.installerLabel(installerSelection)
+    }
+    val autoBackupInterval by viewModel.autoBackupIntervalHours.collectAsState()
+    val autoBackupTreeUri by viewModel.autoBackupTreeUri.collectAsState()
+    val lastAutoBackupAt by viewModel.lastAutoBackupAt.collectAsState()
+    val autoBackupFolderName by produceState<String?>(null, autoBackupTreeUri) {
+        value = autoBackupTreeUri?.let { viewModel.autoBackupFolderName(it) }
+    }
 
     val exportBackupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream")
@@ -108,6 +136,13 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
     val importBackupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri -> if (uri != null) viewModel.importFile(uri) }
+    val autoBackupFolderLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        val interval = pendingAutoBackupInterval
+        pendingAutoBackupInterval = null
+        if (uri != null && interval != null) viewModel.setAutoBackupFolder(uri, interval)
+    }
 
     // Badge on the Crash logs row; reloaded when returning from the crash list (deletes there).
     val crashCount by produceState(0, showCrashLogs) {
@@ -136,13 +171,13 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
                     )
                 }
             ) { innerPadding ->
-                Column(
-                    Modifier
-                        .padding(innerPadding)
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp)
-                ) {
+                CenteredFullscreenContent(Modifier.padding(innerPadding)) {
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp)
+                    ) {
                     SettingsSectionHeader(stringResource(R.string.settingsAppearance))
                     ThemeRow(prefs, viewModel::setDarkMode)
 
@@ -164,7 +199,52 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
                     SettingsRow(Icons.Filled.BarChart, stringResource(R.string.statsButton)) {
                         showStats = true
                     }
+
+                    SettingsSectionHeader(stringResource(R.string.settingsInstallation))
+                    InstallerMethodRow(
+                        selectedLabel = installerLabel
+                            ?: stringResource(R.string.installerUnavailable),
+                        askEveryTime = askInstallerEveryTime,
+                        onClick = { showInstallerPicker = true }
+                    )
+
                     SettingsSectionHeader(stringResource(R.string.settingsBackup))
+                    val autoBackupLabels = linkedMapOf(
+                        0 to stringResource(R.string.autoBackupOff),
+                        24 to stringResource(R.string.autoBackupDaily),
+                        72 to stringResource(R.string.autoBackupEveryThreeDays),
+                        168 to stringResource(R.string.autoBackupWeekly)
+                    )
+                    val lastBackupLabel = if (lastAutoBackupAt == 0L) {
+                        stringResource(R.string.autoBackupNever)
+                    } else {
+                        DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+                            .format(Date(lastAutoBackupAt))
+                    }
+                    AutoBackupRow(
+                        selectedInterval = autoBackupInterval,
+                        labels = autoBackupLabels,
+                        lastBackupLabel = lastBackupLabel,
+                        onSelect = { hours ->
+                            if (hours == AUTO_BACKUP_INTERVAL_OFF || autoBackupTreeUri != null) {
+                                viewModel.setAutoBackupInterval(hours)
+                            } else {
+                                pendingAutoBackupInterval = hours
+                                autoBackupFolderLauncher.launch(null)
+                            }
+                        }
+                    )
+                    if (autoBackupInterval != AUTO_BACKUP_INTERVAL_OFF) {
+                        SettingsRow(
+                            Icons.Filled.Folder,
+                            stringResource(R.string.autoBackupFolder),
+                            subtitle = autoBackupFolderName
+                                ?: stringResource(R.string.autoBackupChooseFolder)
+                        ) {
+                            pendingAutoBackupInterval = autoBackupInterval
+                            autoBackupFolderLauncher.launch(autoBackupTreeUri)
+                        }
+                    }
                     SettingsRow(
                         Icons.Filled.Save,
                         stringResource(R.string.exportBackup),
@@ -236,25 +316,40 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
                         }
                     }
 
-                    // Footer: version on the left, About opening the info dialog on the right.
-                    HorizontalDivider(Modifier.padding(top = 16.dp))
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = stringResource(R.string.version, BuildConfig.VERSION_NAME),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f)
-                        )
-                        TextButton(onClick = { showAbout = true }) {
-                            Text(stringResource(R.string.aboutTitle))
-                        }
+                    SettingsSectionHeader(stringResource(R.string.aboutTitle))
+                    SettingsRow(Icons.Filled.NewReleases, stringResource(R.string.whatsNewTitle)) {
+                        showWhatsNew = true
                     }
+                    SettingsRow(Icons.Filled.Info, stringResource(R.string.aboutTitle)) {
+                        showAbout = true
+                    }
+
+                    // Footer: the app details live in the section above; keep the installed
+                    // version visible without turning it into another action.
+                    HorizontalDivider(Modifier.padding(top = 16.dp))
+                    Text(
+                        text = stringResource(R.string.version, BuildConfig.VERSION_NAME),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 16.dp)
+                    )
+                }
                 }
             }
         }
+    }
+
+    if (showInstallerPicker) {
+        InstallerPickerScreen(
+            selected = installerSelection,
+            askEveryTime = askInstallerEveryTime,
+            onSelect = { selection ->
+                viewModel.setInstallMethod(selection.method, selection.externalComponent)
+                showInstallerPicker = false
+            },
+            onAskEveryTimeChange = viewModel::setAskInstallerEveryTime,
+            onDismiss = { showInstallerPicker = false }
+        )
     }
 
     if (showIpsBackupWarning) {
@@ -273,6 +368,9 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
     }
     if (showCrashLogs) {
         CrashLogsScreen { showCrashLogs = false }
+    }
+    if (showWhatsNew) {
+        WhatsNewScreen { showWhatsNew = false }
     }
     if (showAbout) {
         InfoDialog { showAbout = false }
@@ -322,6 +420,7 @@ internal fun SettingsRow(
     tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
     busy: Boolean = false,
     trailing: (@Composable () -> Unit)? = null,
+    subtitle: String? = null,
     onClick: () -> Unit
 ) {
     val contentAlpha = if (busy) 0.5f else 1f
@@ -339,13 +438,21 @@ internal fun SettingsRow(
             modifier = Modifier.size(22.dp)
         )
         Spacer(Modifier.width(16.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = (if (tint == MaterialTheme.colorScheme.error) tint else MaterialTheme.colorScheme.onSurface)
-                .copy(alpha = contentAlpha),
-            modifier = Modifier.weight(1f)
-        )
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = (if (tint == MaterialTheme.colorScheme.error) tint else MaterialTheme.colorScheme.onSurface)
+                    .copy(alpha = contentAlpha)
+            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha)
+                )
+            }
+        }
         if (busy) {
             LoadingIndicator(
                 modifier = Modifier.size(22.dp),
@@ -353,6 +460,36 @@ internal fun SettingsRow(
             )
         } else {
             trailing?.invoke()
+        }
+    }
+}
+
+@Composable
+private fun AutoBackupRow(
+    selectedInterval: Int,
+    labels: Map<Int, String>,
+    lastBackupLabel: String,
+    onSelect: (Int) -> Unit
+) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        SettingsRow(
+            icon = Icons.Filled.Backup,
+            label = stringResource(R.string.automaticBackups),
+            subtitle = stringResource(
+                R.string.autoBackupSummary,
+                labels[selectedInterval] ?: labels.getValue(AUTO_BACKUP_INTERVAL_OFF),
+                lastBackupLabel
+            ),
+            onClick = { open = true }
+        )
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            labels.forEach { (hours, label) ->
+                CheckableDropdownItem(label, checked = hours == selectedInterval) {
+                    open = false
+                    onSelect(hours)
+                }
+            }
         }
     }
 }
@@ -398,6 +535,51 @@ private fun ThemeRow(prefs: DataStore<Preferences>, onSelect: (DarkMode) -> Unit
                     onSelect(mode)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun InstallerMethodRow(
+    selectedLabel: String,
+    askEveryTime: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Filled.InstallMobile,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.installerMethod),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = if (askEveryTime) {
+                    stringResource(R.string.installerAskEveryTimeEnabled)
+                } else {
+                    selectedLabel
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        // The subtitle already names the installer unless the picker takes over; then the
+        // trailing label shows which option the picker will preselect.
+        if (askEveryTime) {
+            Text(
+                text = selectedLabel,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

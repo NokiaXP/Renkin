@@ -7,6 +7,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 
 @RunWith(RobolectricTestRunner::class)
 class OnlineIconRepositoryTest {
@@ -100,5 +102,26 @@ class OnlineIconRepositoryTest {
         assertTrue(OnlineIconRepository.isWellFormedSvg("<svg viewBox=\"0 0 1 1\"><path d=\"M0 0\"/></svg>"))
         assertFalse(OnlineIconRepository.isWellFormedSvg("<svg><path>"))
         assertFalse(OnlineIconRepository.isWellFormedSvg("<html></html>"))
+    }
+
+    @Test
+    fun retryAfterDelay_supportsSecondsDatesAndBounds() {
+        val now = 1_700_000_000_000L
+        val retryAt = ZonedDateTime.parse(
+            "Wed, 15 Nov 2023 22:13:25 GMT",
+            DateTimeFormatter.RFC_1123_DATE_TIME
+        )
+        val dateNow = retryAt.minusSeconds(5).toInstant().toEpochMilli()
+
+        assertEquals(5_000L, OnlineIconRepository.retryAfterDelayMs("5", now))
+        assertEquals(15_000L, OnlineIconRepository.retryAfterDelayMs("999", now))
+        assertEquals(
+            5_000L,
+            OnlineIconRepository.retryAfterDelayMs(
+                retryAt.format(DateTimeFormatter.RFC_1123_DATE_TIME),
+                dateNow
+            )
+        )
+        assertNull(OnlineIconRepository.retryAfterDelayMs("invalid", now))
     }
 }

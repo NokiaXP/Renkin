@@ -7,8 +7,12 @@ import androidx.compose.ui.graphics.Color
 import dev.renkinProject.renkin.data.DbApplication
 import dev.renkinProject.renkin.data.RenkinPackRepository
 import dev.renkinProject.renkin.drawable.ADAPTIVE_ICON_SCALE
+import dev.renkinProject.renkin.drawable.AdaptiveIconPackDrawable
 import dev.renkinProject.renkin.drawable.BitmapIconDrawable
+import dev.renkinProject.renkin.drawable.MaterialYouPackEditState
+import dev.renkinProject.renkin.extension.getBytes
 import dev.renkinProject.renkin.extension.toBase64
+import dev.renkinProject.renkin.icon.creator.ColorizerStyle
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -47,6 +51,47 @@ class RenkinPackStoreTest {
 
         assertTrue(icon.isAdaptiveIcon())
         assertEquals(ADAPTIVE_ICON_SCALE, icon.previewScale)
+    }
+
+    @Test
+    fun layeredAdaptiveIconRestoresMaterialYouEditorStateAndOriginalLayers() {
+        fun layer(color: Int) = Bitmap.createBitmap(
+            AdaptiveIconPackDrawable.LAYER_SIZE,
+            AdaptiveIconPackDrawable.LAYER_SIZE,
+            Bitmap.Config.ARGB_8888
+        ).apply { eraseColor(color) }
+
+        val originalForeground = layer(AndroidColor.WHITE)
+        val originalBackground = layer(AndroidColor.BLACK)
+        val state = MaterialYouPackEditState(
+            selectedScheme = 2,
+            customForeground = ColorizerStyle(firstColor = AndroidColor.MAGENTA),
+            customBackground = ColorizerStyle(firstColor = AndroidColor.CYAN),
+            strokeScale = 1.25f
+        )
+        val icon = AdaptiveIconPackDrawable(
+            layer(AndroidColor.RED).getBytes(Bitmap.CompressFormat.PNG, 100),
+            layer(AndroidColor.BLUE).getBytes(Bitmap.CompressFormat.PNG, 100),
+            materialYouEditState = state,
+            originalForegroundPng = originalForeground.getBytes(Bitmap.CompressFormat.PNG, 100),
+            originalBackgroundPng = originalBackground.getBytes(Bitmap.CompressFormat.PNG, 100)
+        )
+        val row = DbApplication(
+            packageName = "com.example",
+            activityName = "com.example.Main",
+            isAdaptiveIcon = true,
+            isXml = true,
+            drawable = icon.toDbString()
+        )
+
+        val restored = store().decodeRow(row, Color.Black).icon as AdaptiveIconPackDrawable
+
+        assertEquals(state, restored.materialYouEditState)
+        assertEquals(AndroidColor.RED, restored.foreground.getPixel(0, 0))
+        assertEquals(AndroidColor.BLUE, restored.background.getPixel(0, 0))
+        val original = restored.restoreOriginalMaterialYouLayers(state)
+        assertEquals(AndroidColor.WHITE, original.foreground.getPixel(0, 0))
+        assertEquals(AndroidColor.BLACK, original.background.getPixel(0, 0))
     }
 
     @Test

@@ -222,6 +222,30 @@ class WatchRepositoryTest {
     }
 
     @Test
+    fun manualRefreshReplacesCandidatesWithoutReopeningCompletedRule() = runBlocking {
+        val app = AppComponent("com.a", "A")
+        val ruleId = createRule(listOf(app), false, listOf("pack1"), 1L)
+        val suggestionId = repo.completeWithSuggestion(
+            ruleId,
+            app,
+            listOf(CandidateInput("pack1", "old_drawable", "old_hash"))
+        )
+
+        val replaced = repo.replaceCandidates(
+            suggestionId,
+            listOf(CandidateInput("pack1", "new_drawable", "new_hash"))
+        )
+
+        assertTrue(replaced)
+        assertEquals(
+            listOf(IconSuggestionCandidate(suggestionId, "pack1", "new_drawable", "new_hash")),
+            repo.getCandidates(suggestionId)
+        )
+        assertEquals(listOf(ruleId), repo.getCompletedRules().map { it.rule.id })
+        assertTrue(repo.getActiveRules().isEmpty())
+    }
+
+    @Test
     fun completionRejectsAnAppNoLongerInTheRule() = runBlocking {
         val ruleId = createRule(listOf(AppComponent("com.a", "A")), false, listOf("pack1"), 1L)
 

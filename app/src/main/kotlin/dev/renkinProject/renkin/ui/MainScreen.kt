@@ -35,7 +35,6 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Lock
@@ -67,6 +66,8 @@ import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -112,6 +113,7 @@ import dev.renkinProject.renkin.data.IconPack
 import dev.renkinProject.renkin.data.getBooleanValue
 import dev.renkinProject.renkin.data.getEnumValue
 import dev.renkinProject.renkin.data.getPreferencesValue
+import dev.renkinProject.renkin.apk.installerSelection
 import androidx.hilt.navigation.compose.hiltViewModel
 import dev.renkinProject.renkin.GlobalOptionsActivity
 import dev.renkinProject.renkin.MainViewModel
@@ -319,6 +321,15 @@ fun MainColumn(iconPacks: List<IconPack>) {
         )
     }
 
+    viewModel.installerPromptReason?.let { reason ->
+        InstallerPromptDialog(
+            selected = prefs.getPreferencesValue().installerSelection(),
+            explainSavedChoice = reason == MainViewModel.InstallerPromptReason.FIRST_CHOICE,
+            onSelect = viewModel::confirmInstallerSelection,
+            onDismiss = viewModel::dismissInstallerSelection
+        )
+    }
+
     val installFailure = viewModel.installFailure
     if (installFailure != null) {
         val copiedMessage = stringResource(R.string.installFailureCopied)
@@ -445,61 +456,78 @@ fun MainColumn(iconPacks: List<IconPack>) {
         label = "searchBarBackground"
     )
 
+    val introTargets = remember { IntroTargets() }
     // No pull-to-refresh here on purpose: its nested-scroll handler interfered with the
     // collapsing top bar (scroll glitches, freezes) — the app list reloads from Settings.
-    Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = { TitleBar(scrollBehavior) },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        floatingActionButton = { BuildPackFab(isInRefresh, expanded = listState.isScrollingUp()) }
-    ) { innerPadding ->
-        Column(Modifier.padding(innerPadding)) {
-            SearchBar(
-                containerColor = headerColor,
-                sortOrder = sortOrder,
-                filterNoIcon = filterNoIcon,
-                filterFallback = filterFallback,
-                filterLocked = filterLocked,
-                showLockedFilter = viewModel.lockedIconKeys.isNotEmpty() || filterLocked,
-                onSortChange = viewModel::setAppSortOrder,
-                onFilterChange = { setProblemFilter(AppProblemFilter.MISSING, it) },
-                onFallbackFilterChange = { setProblemFilter(AppProblemFilter.FALLBACK, it) },
-                onLockedFilterChange = { setProblemFilter(AppProblemFilter.LOCKED, it) },
-                onSearch = { packageFilter = it }
-            )
-            ApplicationList(
-                iconPacks, packageFilter, sortOrder, filterNoIcon, filterFallback, filterLocked, listState,
-                onShowAllApps = clearProblemFilters,
-                activeProblemFilters = activeProblemFilters,
-                onProblemFilterToggle = toggleProblemFilter
-            )
+    CompositionLocalProvider(LocalIntroTargets provides introTargets) {
+        Scaffold(
+            modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+            topBar = { TitleBar(scrollBehavior) },
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            floatingActionButton = {
+                BuildPackFab(
+                    isInRefresh,
+                    expanded = listState.isScrollingUp(),
+                    modifier = Modifier.introTarget(IntroTarget.BUILD)
+                )
+            }
+        ) { innerPadding ->
+            Column(Modifier.padding(innerPadding)) {
+                SearchBar(
+                    containerColor = headerColor,
+                    sortOrder = sortOrder,
+                    filterNoIcon = filterNoIcon,
+                    filterFallback = filterFallback,
+                    filterLocked = filterLocked,
+                    showLockedFilter = viewModel.lockedIconKeys.isNotEmpty() || filterLocked,
+                    onSortChange = viewModel::setAppSortOrder,
+                    onFilterChange = { setProblemFilter(AppProblemFilter.MISSING, it) },
+                    onFallbackFilterChange = { setProblemFilter(AppProblemFilter.FALLBACK, it) },
+                    onLockedFilterChange = { setProblemFilter(AppProblemFilter.LOCKED, it) },
+                    onSearch = { packageFilter = it }
+                )
+                ApplicationList(
+                    iconPacks, packageFilter, sortOrder, filterNoIcon, filterFallback, filterLocked, listState,
+                    onShowAllApps = clearProblemFilters,
+                    activeProblemFilters = activeProblemFilters,
+                    onProblemFilterToggle = toggleProblemFilter
+                )
+            }
         }
     }
 
     // First-run intro: shows until dismissed once; Settings → "Show intro" clears the flag
-    // to bring it back. Initial=true so nothing flashes while the DataStore loads.
+    // to bring it back. Initial=true so nothing flashes while the DataStore loads. It waits for the
+    // app list because it points at a real row, and starts from the top where every target sits.
     val onboardingSeen by remember {
         prefs.data.map { it.getBooleanValue(OnboardingSeenKey) }
     }.collectAsState(initial = true)
-    if (!onboardingSeen) {
-        OnboardingOverlay {
+    if (!onboardingSeen && viewModel.startupComplete) {
+        LaunchedEffect(Unit) {
+            listState.scrollToItem(0)
+            scrollBehavior.state.heightOffset = 0f
+        }
+        IntroShowcase(introTargets) {
             viewModel.setOnboardingSeen(true)
         }
     }
 
-    // Opened from an icon-watch notification → show the apply modal for that suggestion
+    // Release notes temporarily take the dialog slot. A notification's pending suggestion stays
+    // in the ViewModel and opens as soon as the notes close.
     val pendingSuggestion = viewModel.pendingWatchSuggestionId
-    if (pendingSuggestion != null) {
-        WatchApplyModal(pendingSuggestion) { viewModel.clearPendingWatchSuggestion() }
+    if (viewModel.whatsNewVisible) {
+        WhatsNewDialog(viewModel::dismissWhatsNew)
+    } else if (pendingSuggestion != null) {
+        WatchApplyModal(pendingSuggestion) {
+            viewModel.clearPendingWatchSuggestion(pendingSuggestion)
+        }
     }
 
     // The replace-everything confirmation for a picked full-backup file. Hosted here (not in
     // Settings) so imports started from the profile switcher confirm too.
-    if (viewModel.pendingBackupImport != null) {
-        ConfirmDialog(
-            title = stringResource(R.string.importBackupTitle),
-            text = stringResource(R.string.importBackupText),
-            icon = Icons.Filled.Restore,
+    viewModel.pendingBackupImport?.let { pending ->
+        BackupRestorePreviewDialog(
+            preview = pending.preview,
             onConfirm = { viewModel.confirmBackupImport() },
             onDismiss = { viewModel.cancelBackupImport() }
         )
@@ -651,6 +679,23 @@ fun ApplicationList(
     // whole profile, so each of them spans every column instead of sitting in one.
     val columns = homeListColumns(LocalConfiguration.current.screenWidthDp)
 
+    // The intro scrolls its targets into view: the header cards sit at the top, the first app right
+    // after them (the missing-pack banner, when shown, comes first).
+    val introTargets = LocalIntroTargets.current
+    val firstAppItemIndex = if (viewModel.missingPackSummary.isNotEmpty()) 3 else 2
+    SideEffect {
+        introTargets?.revealers?.let { revealers ->
+            val revealHeader: suspend () -> Unit = { listState.animateScrollToItem(0) }
+            revealers[IntroTarget.SOURCE] = revealHeader
+            revealers[IntroTarget.ADVANCED_OPTIONS] = revealHeader
+            revealers[IntroTarget.APP_ROW] = {
+                if (!listState.isItemFullyVisible(firstAppItemIndex)) {
+                    listState.animateScrollToItem(firstAppItemIndex)
+                }
+            }
+        }
+    }
+
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),
         state = listState,
@@ -671,13 +716,17 @@ fun ApplicationList(
         }
         // Scrolls away with the list — only the search bar stays pinned
         item(key = "hero", contentType = "hero", span = { GridItemSpan(maxLineSpan) }) {
-            HeroPackCard(iconPacks, activeProblemFilters, onProblemFilterToggle)
+            Box(Modifier.introTarget(IntroTarget.SOURCE)) {
+                HeroPackCard(iconPacks, activeProblemFilters, onProblemFilterToggle)
+            }
         }
         item(key = "options", contentType = "options", span = { GridItemSpan(maxLineSpan) }) {
-            AdvancedOptionsCard(iconPacks) {
-                globalOptionsLauncher.launch(
-                    Intent(globalOptionsContext, GlobalOptionsActivity::class.java)
-                )
+            Box(Modifier.introTarget(IntroTarget.ADVANCED_OPTIONS)) {
+                AdvancedOptionsCard(iconPacks) {
+                    globalOptionsLauncher.launch(
+                        Intent(globalOptionsContext, GlobalOptionsActivity::class.java)
+                    )
+                }
             }
         }
         if (displayList.isEmpty()) {
@@ -699,13 +748,26 @@ fun ApplicationList(
             }
         } else {
             items(displayList, key = { it.value.key }, contentType = { "application" }) { indexedApp ->
-                ApplicationItem(iconPacks, indexedApp.value, indexedApp.index, themed, bgColorValue, Modifier.animateItem())
+                // Only the top row is pointed at by the intro.
+                val introModifier = if (indexedApp.value.key == displayList.first().value.key) {
+                    Modifier.introTarget(IntroTarget.APP_ROW)
+                } else Modifier
+                ApplicationItem(
+                    iconPacks, indexedApp.value, indexedApp.index, themed, bgColorValue,
+                    Modifier.animateItem().then(introModifier)
+                )
             }
         }
     }
 }
 
 private val EmptyStateMinHeight = 260.dp
+
+private fun LazyGridState.isItemFullyVisible(index: Int): Boolean {
+    val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return false
+    return item.offset.y >= layoutInfo.viewportStartOffset &&
+        item.offset.y + item.size.height <= layoutInfo.viewportEndOffset
+}
 
 /**
  * Wraps a small badge so long-pressing (or hovering) it shows a plain tooltip explaining what it
@@ -1012,7 +1074,7 @@ fun TitleBar(
             titleContentColor = MaterialTheme.colorScheme.primary,
         ),
         title = {
-            ProfileSwitcherTitle()
+            Box(Modifier.introTarget(IntroTarget.PROFILE)) { ProfileSwitcherTitle() }
         },
         actions = {
             // Lit while any of the active profile's icons are locked behind a missing pack.
@@ -1026,8 +1088,11 @@ fun TitleBar(
                     )
                 }
             }
-            RefreshButton()
-            IconButton(onClick = { openWatch = true }) {
+            Box(Modifier.introTarget(IntroTarget.REFRESH)) { RefreshButton() }
+            IconButton(
+                onClick = { openWatch = true },
+                modifier = Modifier.introTarget(IntroTarget.WATCHED_ICONS)
+            ) {
                 BadgedBox(badge = {
                     if (completedCount > 0) {
                         Badge { Text(completedCount.toString()) }
@@ -1040,14 +1105,20 @@ fun TitleBar(
                     )
                 }
             }
-            IconButton(onClick = { openInfo = true }) {
+            IconButton(
+                onClick = { openInfo = true },
+                modifier = Modifier.introTarget(IntroTarget.INFO)
+            ) {
                 Icon(
                     imageVector = Icons.Filled.Info,
                     contentDescription = stringResource(R.string.info),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
-            IconButton(onClick = { openSettings = true }) {
+            IconButton(
+                onClick = { openSettings = true },
+                modifier = Modifier.introTarget(IntroTarget.SETTINGS)
+            ) {
                 Icon(
                     imageVector = Icons.Filled.Settings,
                     contentDescription = stringResource(R.string.settings),

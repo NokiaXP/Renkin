@@ -48,7 +48,7 @@ class ColorPresetTest {
             firstColor = Color.MAGENTA,
             gradientStops = listOf(Color.CYAN, Color.YELLOW),
             gradientAngle = 225f,
-            flat = true
+            lighten = true
         )
 
         assertEquals(style, decodeColorizerStyle(encodeColorizerStyle(style)))

@@ -14,19 +14,20 @@ import dev.renkinProject.renkin.data.OUTLINE_WIDTH_MIN
  *
  * A null group means "this preset does not carry that group": applying it leaves the icon's own
  * settings for that group untouched. A group that IS present but holds a neutral value (no image
- * effect, no shape, no outline) is a deliberate "turn this off", which is why inclusion is modelled
- * as presence rather than as "differs from default".
+ * effect, no shape, no outline or no shadow) is a deliberate "turn this off", which is why
+ * inclusion is modelled as presence rather than as "differs from default".
  */
 data class ModifierPresetPayload(
     val schemaVersion: Int = MODIFIER_PRESET_SCHEMA_VERSION,
     val effect: ModifierPresetEffect? = null,
     val iconScale: Float? = null,
     val shape: ModifierPresetShape? = null,
-    val outline: ModifierPresetOutline? = null
+    val outline: ModifierPresetOutline? = null,
+    val shadow: ModifierPresetShadow? = null
 ) {
     /** True when the preset would change nothing at all — the save button gates on this. */
     val isEmpty: Boolean
-        get() = effect == null && iconScale == null && shape == null && outline == null
+        get() = effect == null && iconScale == null && shape == null && outline == null && shadow == null
 }
 
 /**
@@ -59,6 +60,17 @@ data class ModifierPresetOutline(
     val style: ColorizerStyle
 )
 
+/** A shadow drawn from the final icon silhouette. */
+data class ModifierPresetShadow(
+    val enabled: Boolean,
+    val blur: Float,
+    val distance: Float,
+    val angle: Float,
+    val allDirections: Boolean,
+    val style: ColorizerStyle,
+    val opacity: Float
+)
+
 /**
  * Bumped only when a stored payload can no longer be read by [decodeModifierPreset] as written.
  * Adding a new optional line does NOT need a bump: unknown keys are ignored on read and missing
@@ -89,6 +101,14 @@ private const val KEY_OUTLINE = "outline"
 private const val KEY_OUTLINE_MODE = "outline.mode"
 private const val KEY_OUTLINE_WIDTH = "outline.width"
 private const val KEY_OUTLINE_STYLE = "outline.style"
+private const val KEY_SHADOW = "shadow"
+private const val KEY_SHADOW_ENABLED = "shadow.enabled"
+private const val KEY_SHADOW_BLUR = "shadow.blur"
+private const val KEY_SHADOW_DISTANCE = "shadow.distance"
+private const val KEY_SHADOW_ANGLE = "shadow.angle"
+private const val KEY_SHADOW_ALL_DIRECTIONS = "shadow.allDirections"
+private const val KEY_SHADOW_STYLE = "shadow.style"
+private const val KEY_SHADOW_OPACITY = "shadow.opacity"
 
 /**
  * Serialises [payload] as newline-separated `key=value` lines. Deliberately not the encoded form
@@ -119,6 +139,16 @@ fun encodeModifierPreset(payload: ModifierPresetPayload): String = buildList {
         add("$KEY_OUTLINE_MODE$ASSIGN${outline.mode.name}")
         add("$KEY_OUTLINE_WIDTH$ASSIGN${outline.width}")
         add("$KEY_OUTLINE_STYLE$ASSIGN${encodeColorizerStyle(outline.style)}")
+    }
+    payload.shadow?.let { shadow ->
+        add("$KEY_SHADOW${ASSIGN}1")
+        add("$KEY_SHADOW_ENABLED$ASSIGN${shadow.enabled}")
+        add("$KEY_SHADOW_BLUR$ASSIGN${shadow.blur}")
+        add("$KEY_SHADOW_DISTANCE$ASSIGN${shadow.distance}")
+        add("$KEY_SHADOW_ANGLE$ASSIGN${shadow.angle}")
+        add("$KEY_SHADOW_ALL_DIRECTIONS$ASSIGN${shadow.allDirections}")
+        add("$KEY_SHADOW_STYLE$ASSIGN${encodeColorizerStyle(shadow.style)}")
+        add("$KEY_SHADOW_OPACITY$ASSIGN${shadow.opacity}")
     }
 }.joinToString(LINE)
 
@@ -170,6 +200,27 @@ fun decodeModifierPreset(encoded: String): ModifierPresetPayload? {
         )
     } else null
 
+    val shadow = if (values[KEY_SHADOW] != null) {
+        ModifierPresetShadow(
+            enabled = values[KEY_SHADOW_ENABLED]?.toBooleanStrictOrNull() ?: false,
+            blur = values.floatIn(KEY_SHADOW_BLUR, SHADOW_BLUR_MIN..SHADOW_BLUR_MAX, SHADOW_BLUR_DEFAULT),
+            distance = values.floatIn(
+                KEY_SHADOW_DISTANCE,
+                SHADOW_DISTANCE_MIN..SHADOW_DISTANCE_MAX,
+                SHADOW_DISTANCE_DEFAULT
+            ),
+            angle = values.floatIn(KEY_SHADOW_ANGLE, 0f..360f, SHADOW_ANGLE_DEFAULT),
+            allDirections = values[KEY_SHADOW_ALL_DIRECTIONS]
+                ?.toBooleanStrictOrNull() ?: false,
+            style = values.styleOrDefault(KEY_SHADOW_STYLE, android.graphics.Color.BLACK),
+            opacity = values.floatIn(
+                KEY_SHADOW_OPACITY,
+                SHADOW_OPACITY_MIN..SHADOW_OPACITY_MAX,
+                SHADOW_OPACITY_DEFAULT
+            )
+        )
+    } else null
+
     val payload = ModifierPresetPayload(
         schemaVersion = values[KEY_VERSION]?.toIntOrNull() ?: MODIFIER_PRESET_SCHEMA_VERSION,
         effect = effect,
@@ -177,7 +228,8 @@ fun decodeModifierPreset(encoded: String): ModifierPresetPayload? {
             ?.takeIf { it.isFinite() }
             ?.coerceIn(0.5f, 1.5f),
         shape = shape,
-        outline = outline
+        outline = outline,
+        shadow = shadow
     )
     return payload.takeIf { !it.isEmpty }
 }
@@ -208,6 +260,7 @@ fun GenerationOptions.withModifierPreset(payload: ModifierPresetPayload): Genera
             bgRemovalTolerance = effect.backgroundTolerance,
             color = effect.colorizerStyle.firstColor,
             colorizeFlat = effect.colorizerStyle.flat,
+            colorizeLighten = effect.colorizerStyle.lighten,
             colorizeMonochrome = effect.colorizerStyle.monochrome,
             colorizeInverse = effect.colorizerStyle.inverse,
             colorizerMode = effect.colorizerStyle.mode,
@@ -244,11 +297,23 @@ fun GenerationOptions.withModifierPreset(payload: ModifierPresetPayload): Genera
             outlineStyle = outline.style
         )
     }
+    payload.shadow?.let { shadow ->
+        result = result.copy(
+            shadowEnabled = shadow.enabled,
+            shadowBlur = shadow.blur,
+            shadowDistance = shadow.distance,
+            shadowAngle = shadow.angle,
+            shadowAllDirections = shadow.allDirections,
+            shadowStyle = shadow.style,
+            shadowOpacity = shadow.opacity
+        )
+    }
     return result
 }
 
-// A damaged or missing style falls back to plain white rather than dropping the whole group: the
+// A damaged or missing style falls back to a plain colour rather than dropping the whole group: the
 // user still gets the shape/outline/effect they saved, with a colour they can see and fix.
-private fun Map<String, String>.styleOrDefault(key: String): ColorizerStyle =
-    this[key]?.let(::decodeColorizerStyle)
-        ?: ColorizerStyle(firstColor = android.graphics.Color.WHITE)
+private fun Map<String, String>.styleOrDefault(
+    key: String,
+    fallbackColor: Int = android.graphics.Color.WHITE
+): ColorizerStyle = this[key]?.let(::decodeColorizerStyle) ?: ColorizerStyle(firstColor = fallbackColor)

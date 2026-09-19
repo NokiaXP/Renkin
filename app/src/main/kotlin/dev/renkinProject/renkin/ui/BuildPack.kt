@@ -115,7 +115,7 @@ internal fun buildPreviewApps(
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun BuildPackFab(isInRefresh: Boolean, expanded: Boolean = true) {
+fun BuildPackFab(isInRefresh: Boolean, expanded: Boolean = true, modifier: Modifier = Modifier) {
     val viewModel: MainViewModel = hiltViewModel()
     val view = LocalView.current
     val context = getCurrentContext()
@@ -168,6 +168,7 @@ fun BuildPackFab(isInRefresh: Boolean, expanded: Boolean = true) {
         },
         text = { Text(stringResource(id = R.string.buildIconPack)) },
         expanded = expanded,
+        modifier = modifier,
         containerColor = MaterialTheme.colorScheme.primaryContainer,
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer
     )

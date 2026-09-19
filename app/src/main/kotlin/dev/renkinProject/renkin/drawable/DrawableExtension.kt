@@ -102,6 +102,7 @@ fun Drawable.foregroundVectorOrNull(): ImageVectorDrawable? {
     return when (foreground) {
         is ImageVectorDrawable -> foreground
         is InsetIconDrawable -> foreground.drawable as? ImageVectorDrawable
+        is InsetDrawable -> foreground.drawable?.foregroundVectorOrNull()
         else -> null
     }
 }

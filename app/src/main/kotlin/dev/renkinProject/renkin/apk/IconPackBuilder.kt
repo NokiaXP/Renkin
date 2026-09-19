@@ -22,6 +22,7 @@ import dev.renkinProject.renkin.extension.getBytes
 import dev.renkinProject.renkin.extension.getDrawableOrNull
 import dev.renkinProject.renkin.extension.toByteArray
 import dev.renkinProject.renkin.packages.IconPackCatalog
+import dev.renkinProject.renkin.packages.CHANGES_WITH_MATERIAL_YOU_COLORS
 import dev.renkinProject.renkin.packages.PackageInfoStruct
 import dev.renkinProject.renkin.vector.VectorEditor.Companion.setReferenceColorPaths
 import dev.renkinProject.renkin.vector.brush.ReferenceBrush
@@ -49,6 +50,7 @@ import com.reandroid.dex.model.DexFile
 import com.reandroid.dex.sections.SectionType
 import com.reandroid.dex.smali.SmaliReader
 import dev.renkinProject.renkin.drawable.BitmapIconDrawable
+import dev.renkinProject.renkin.drawable.AdaptiveIconPackDrawable
 import dev.renkinProject.renkin.extension.toString
 import dev.renkinProject.renkin.packages.PackageVersion
 import dev.renkinProject.renkin.vector.VectorEditor.Companion.scaleAtCenter
@@ -196,7 +198,7 @@ class IconPackBuilder(
         setSdkVersions(manifest.manifestElement, minSdkVersion, framework.versionCode)
         manifest.setApplicationLabel(packLabel)
 
-        createMainActivity(manifest)
+        createMainActivity(manifest, themed)
 
         insertIconPackAppIcons(apkModule, packageBlock, manifest)
 
@@ -227,16 +229,22 @@ class IconPackBuilder(
                 // topped out one short and never showed completion).
                 progressMethod(++doneIcons, totalIcons)
                 val appFileName = appFileNames.getValue(app.key)
+                val layeredIcon = (app.createdIcon as? AdaptiveIconPackDrawable)?.takeUnless { themed }
+                val legacyName = if (layeredIcon != null) "${appFileName}_legacy" else appFileName
 
                 // Live clock: copied from the source pack when this app's icon is that pack's
                 // untouched dynamic-clock drawable. Skipped in themed mode — the copied hand
-                // layers wouldn't follow the tinting.
-                val clock = if (themed) null else app.sourcePackName
+                // layers wouldn't follow the tinting. Adaptive snapshots own their layers and must
+                // not be replaced with the clock exporter's foreground-only layer list.
+                val clock = if (themed || layeredIcon != null) null else app.sourcePackName
                     ?.takeIf { it.isNotEmpty() }
                     ?.let { clockExporter.clockIconFor(app, it, app.createdIcon) }
 
                 val exportAsAdaptive = themed || app.createdIcon.isAdaptiveIcon()
-                if (clock != null) {
+                if (layeredIcon != null) {
+                    exportAdaptiveLayers(apkModule, packageBlock, layeredIcon, appFileName, legacyName)
+                }
+                else if (clock != null) {
                     val layerList = LayerListXml()
                     clock.layers.forEachIndexed { index, layer ->
                         val layerName = "${appFileName}_layer$index"
@@ -257,6 +265,10 @@ class IconPackBuilder(
                     adaptive.background("@color/icon_background_color")
 
                     when (app.createdIcon) {
+                        is AdaptiveIconPackDrawable -> {
+                            adaptive.foreground(appFileName)
+                            createBitmapResource(apkModule, packageBlock, app.createdIcon.foreground, appFileName + "_foreground")
+                        }
                         is InsetIconDrawable -> {
                             adaptive.startForeground()
                             adaptive.startInset()
@@ -322,8 +334,8 @@ class IconPackBuilder(
                 // <calendar> entry below; only launchers that prefer <item> over <calendar> (e.g.
                 // Smart Launcher) fall back to the static icon without rotating.
                 appfilterXml.item(app.packageName, app.activityName, appFileName)
-                appMapXml.item(app.activityName, appFileName)
-                themeResourcesXml.item(app.packageName, app.activityName, appFileName)
+                appMapXml.item(app.activityName, legacyName)
+                themeResourcesXml.item(app.packageName, app.activityName, legacyName)
             }
         }
 
@@ -425,7 +437,7 @@ class IconPackBuilder(
         targetSdk.setTypeAndData(ValueType.DEC, targetSdkVersion)
     }
 
-    private fun createMainActivity(manifest: AndroidManifestBlock) {
+    private fun createMainActivity(manifest: AndroidManifestBlock, changesWithMaterialYouColors: Boolean) {
         val application = manifest.orCreateApplicationElement
         val activity = application.createChildElement(AndroidManifestBlock.TAG_activity)
 
@@ -444,6 +456,10 @@ class IconPackBuilder(
                 if (child.name == "category") {
                     categories.add(child.getAttributeValue("name")!!)
                 }
+            }
+
+            if (changesWithMaterialYouColors && actions.contains("org.adw.launcher.THEMES")) {
+                categories.add(CHANGES_WITH_MATERIAL_YOU_COLORS)
             }
 
             createIntentFilter(activity, actions.toTypedArray(), categories.toTypedArray())
@@ -506,8 +522,35 @@ class IconPackBuilder(
         apkModule.add(xmlEncoder.encodeToSource(xmlFile, resPath))
     }
 
+    private fun exportAdaptiveLayers(
+        apkModule: ApkModule,
+        packageBlock: PackageBlock,
+        icon: AdaptiveIconPackDrawable,
+        name: String,
+        legacyName: String
+    ) {
+        val fallback = createBitmapResource(apkModule, packageBlock, icon.toBitmap(), name)
+        packageBlock.getOrCreate("", "drawable", legacyName).setValueAsString(fallback.valueAsString)
+        createBitmapResource(apkModule, packageBlock, icon.foreground, "${name}_foreground", "nodpi")
+        createBitmapResource(apkModule, packageBlock, icon.background, "${name}_background", "nodpi")
+        icon.monochrome?.let {
+            createBitmapResource(apkModule, packageBlock, it, "${name}_monochrome", "nodpi")
+        }
+
+        fun adaptive(includeMonochrome: Boolean) = AdaptiveIconXml().apply {
+            background("@drawable/${name}_background")
+            foreground(name)
+            if (includeMonochrome) monochrome("@drawable/${name}_monochrome")
+        }
+        createXmlDrawableResource(apkModule, packageBlock, adaptive(false), name, "anydpi-v26")
+        if (icon.hasMonochrome) {
+            createXmlDrawableResource(apkModule, packageBlock, adaptive(true), name, "anydpi-v33")
+        }
+    }
+
     private fun createXmlDrawableResource(apkModule: ApkModule, packageBlock: PackageBlock, xmlFile: XmlMemoryFile, name: String, qualifier: String = "", type: String = "drawable"): Entry {
-        val resPath = "res/${name}.xml"
+        val directory = type + qualifier.takeIf { it.isNotEmpty() }?.let { "-$it" }.orEmpty()
+        val resPath = "res/$directory/${name}.xml"
         val xmlEncoder = XmlEncoder(packageBlock)
 
         val res = packageBlock.getOrCreate(qualifier, type, name)

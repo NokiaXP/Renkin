@@ -42,6 +42,7 @@ import dev.renkinProject.renkin.data.getIntValue
 import dev.renkinProject.renkin.data.getStringValue
 import dev.renkinProject.renkin.data.normalizeOutlineWidth
 import dev.renkinProject.renkin.data.GlobalColorizeFlatKey
+import dev.renkinProject.renkin.data.GlobalColorizeLightenKey
 import dev.renkinProject.renkin.data.GlobalColorizeInverseKey
 import dev.renkinProject.renkin.data.GlobalColorizeKey
 import dev.renkinProject.renkin.data.GlobalColorizeMonochromeKey
@@ -108,6 +109,8 @@ data class GenerationOptions(
     // Colorize as a flat fill (SRC_IN) rather than the default multiply blend, so the picked colour
     // replaces the icon's own colours instead of mixing with them. Per-icon Modifier-tab option.
     val colorizeFlat: Boolean = false,
+    // SCREEN blend raises dark channels toward the picked colour without clipping like raw PLUS.
+    val colorizeLighten: Boolean = false,
     // Alternative Colorize results: grayscale, plus optional inversion of either grayscale or RGB.
     val colorizeMonochrome: Boolean = false,
     val colorizeInverse: Boolean = false,
@@ -130,8 +133,9 @@ data class GenerationOptions(
     // the whole icon is colourized with the options above, which is what every other surface asks
     // for. Only ever set per app; the pack-wide surfaces never populate it.
     val colorizeLayers: List<SegmentLayer> = emptyList(),
-    // Icon shape applied as the LAST step: NONE leaves the icon untouched; otherwise the icon
-    // is cropped into the shape (the default — most icons are full-bleed) or laid on a
+    // Icon shape applied after outline and before the optional shadow: NONE leaves the icon
+    // untouched; otherwise the icon is cropped into the shape (the default — most icons are
+    // full-bleed) or laid on a
     // [bgColor]-filled shape plate. [iconShapeScale] sizes the SHAPE itself (the icon stays
     // as-is — that's [iconScale]): smaller crops deeper, larger clips just the corners.
     val iconShape: IconShape = IconShape.NONE,
@@ -148,6 +152,15 @@ data class GenerationOptions(
     // Painted areas where the outline step must not apply (the eraser tool). Alpha mask in
     // normalised icon space; null = outline everywhere. Session-only — never persisted.
     val outlineEraseMask: android.graphics.Bitmap? = null,
+    // A shadow follows the final silhouette. It is intentionally per-icon: adaptive masks clip
+    // outside effects, so enabling it produces a faithful flattened fallback for that icon.
+    val shadowEnabled: Boolean = false,
+    val shadowBlur: Float = SHADOW_BLUR_DEFAULT,
+    val shadowDistance: Float = SHADOW_DISTANCE_DEFAULT,
+    val shadowAngle: Float = SHADOW_ANGLE_DEFAULT,
+    val shadowAllDirections: Boolean = false,
+    val shadowStyle: ColorizerStyle = ColorizerStyle(firstColor = android.graphics.Color.BLACK),
+    val shadowOpacity: Float = SHADOW_OPACITY_DEFAULT,
     // Ordered hand corrections to background removal. Session-only, like the outline eraser.
     val backgroundBrushOperations: List<BackgroundBrushOperation> = emptyList(),
     // Text-icon options: the string rendered for TextType.CUSTOM (empty falls back to the app
@@ -171,7 +184,11 @@ data class GenerationOptions(
     // CHANGES_WITH_MATERIAL_YOU_COLORS. Null colours preserve the pack's originals.
     val materialYouPackForeground: Int? = null,
     val materialYouPackBackground: Int? = null,
-    val materialYouPackStrokeScale: Float = 1f
+    val materialYouPackStrokeScale: Float = 1f,
+    val materialYouPackSelectedScheme: Int = -1,
+    val materialYouPackCustomForeground: ColorizerStyle? = null,
+    val materialYouPackCustomBackground: ColorizerStyle? = null,
+    val useFullApplicationIcon: Boolean = false
 ) {
     companion object {
         /**
@@ -249,6 +266,9 @@ fun globalModifierOptions(preferences: Preferences): GenerationOptions {
         GlobalColorizerStyleKeys, androidx.compose.ui.graphics.Color.White
     ).copy(
         flat = preferences.getBooleanValue(GlobalColorizeFlatKey),
+        lighten = preferences.getBooleanValue(GlobalColorizeLightenKey) &&
+            !preferences.getBooleanValue(GlobalColorizeFlatKey) &&
+            !preferences.getBooleanValue(GlobalColorizeMonochromeKey),
         monochrome = preferences.getBooleanValue(GlobalColorizeMonochromeKey),
         inverse = preferences.getBooleanValue(GlobalColorizeInverseKey)
     )
@@ -274,6 +294,7 @@ fun globalModifierOptions(preferences: Preferences): GenerationOptions {
         themed = false,
         override = true,
         colorizeFlat = colorizerStyle.flat,
+        colorizeLighten = colorizerStyle.lighten,
         colorizeMonochrome = colorizerStyle.monochrome,
         colorizeInverse = colorizerStyle.inverse,
         colorizerMode = colorizerStyle.mode,
@@ -334,11 +355,54 @@ fun GenerationOptions.backgroundShader(width: Int, height: Int): android.graphic
     )
 }
 
+// The colourize settings gathered back into the style the editors and shaders work with.
+internal val GenerationOptions.colorizerStyle: ColorizerStyle
+    get() = ColorizerStyle(
+        mode = colorizerMode,
+        gradientType = colorizerGradientType,
+        firstColor = color,
+        gradientStops = colorizerGradientColors,
+        gradientPositions = colorizerGradientPositions,
+        gradientAngle = colorizerGradientAngle,
+        flat = colorizeFlat,
+        lighten = colorizeLighten,
+        monochrome = colorizeMonochrome,
+        inverse = colorizeInverse
+    )
+
+// Colorize blend for bitmap icons: SRC_IN replaces the icon's colours with the picked one (flat
+// fill), SCREEN lightens toward it, MULTIPLY tints them. Vectors recolour flat unless baked.
+internal val GenerationOptions.colorizeBlendMode: android.graphics.PorterDuff.Mode
+    get() = when {
+        colorizeMonochrome -> android.graphics.PorterDuff.Mode.MULTIPLY
+        colorizeFlat -> android.graphics.PorterDuff.Mode.SRC_IN
+        colorizeLighten -> android.graphics.PorterDuff.Mode.SCREEN
+        else -> android.graphics.PorterDuff.Mode.MULTIPLY
+    }
+
+// Position, scale, shape, outline and shadow: everything [IconAdjustmentPipeline] applies after
+// the image edit. Callers that skip work when nothing changes must all agree on this list.
+fun GenerationOptions.hasIconAdjustments(): Boolean =
+    iconOffsetX != 0f || iconOffsetY != 0f || iconScale != 1f ||
+        iconShape != IconShape.NONE || outlineMode != OutlineMode.NONE || hasVisibleShadow()
+
 fun GenerationOptions.hasVisibleModifierEffect(): Boolean =
-    primaryImageEdit != ImageEdit.NONE || iconScale != 1f ||
-        iconShape != IconShape.NONE || outlineMode != OutlineMode.NONE ||
+    primaryImageEdit != ImageEdit.NONE || hasIconAdjustments() ||
         materialYouPackForeground != null || materialYouPackBackground != null ||
         materialYouPackStrokeScale != 1f
+
+fun GenerationOptions.hasVisibleShadow(): Boolean =
+    shadowEnabled && shadowOpacity > 0f && shadowHasVisibleColor() &&
+        (shadowBlur > 0f || shadowDistance > 0f)
+
+private fun GenerationOptions.shadowHasVisibleColor(): Boolean {
+    val colors = if (shadowStyle.mode == ColorizerMode.GRADIENT) {
+        shadowStyle.allGradientColors
+    } else {
+        listOf(shadowStyle.firstColor)
+    }
+    return colors.any { android.graphics.Color.alpha(it) > 0 }
+}
 
 /** Letter-case transform for text icons (per-app option; not persisted globally). */
 enum class TextCase { AS_IS, UPPER, LOWER }

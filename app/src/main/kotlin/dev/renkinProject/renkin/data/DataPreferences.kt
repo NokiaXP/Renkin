@@ -32,6 +32,10 @@ import kotlin.enums.enumEntries
 private val preferenceAccessMutex = Mutex()
 
 private const val DARK_MODE_NAME = "NIGHT_THEME"
+private const val INSTALL_METHOD_NAME = "INSTALL_METHOD"
+private const val EXTERNAL_INSTALLER_COMPONENT_NAME = "EXTERNAL_INSTALLER_COMPONENT"
+private const val ASK_INSTALLER_EVERY_TIME_NAME = "ASK_INSTALLER_EVERY_TIME"
+private const val INSTALLER_CHOICE_CONFIRMED_NAME = "INSTALLER_CHOICE_CONFIRMED"
 private const val INCLUDE_VECTOR_NAME = "INCLUDE_VECTOR"
 private const val MONOCHROME_NAME = "MONOCHROME"
 private const val EXPORT_THEMED_NAME = "EXPORT_THEMED"
@@ -51,6 +55,9 @@ private const val APP_SORT_ORDER_NAME = "APP_SORT_ORDER"
 private const val APP_FILTER_NO_ICON_NAME = "APP_FILTER_NO_ICON"
 private const val WATCH_CHECK_INTERVAL_NAME = "WATCH_CHECK_INTERVAL_MINUTES"
 private const val LAST_WATCH_CHECK_AT_NAME = "LAST_WATCH_CHECK_AT"
+private const val AUTO_BACKUP_INTERVAL_NAME = "AUTO_BACKUP_INTERVAL_HOURS"
+private const val AUTO_BACKUP_TREE_URI_NAME = "AUTO_BACKUP_TREE_URI"
+private const val LAST_AUTO_BACKUP_AT_NAME = "LAST_AUTO_BACKUP_AT"
 private const val FALLBACK_SOURCE_NAME = "FALLBACK_SOURCE"
 private const val BUILT_PRIMARY_SOURCE_NAME = "BUILT_PRIMARY_SOURCE"
 private const val BUILT_PRIMARY_ICON_PACK_NAME = "BUILT_PRIMARY_ICON_PACK"
@@ -59,14 +66,21 @@ private const val BUILT_PRIMARY_ICON_PACK_NAME = "BUILT_PRIMARY_ICON_PACK"
 // lower it (min 15, WorkManager's periodic floor) to test the watcher quickly.
 const val WATCH_CHECK_INTERVAL_DEFAULT = 24 * 60
 const val WATCH_CHECK_INTERVAL_MIN = 15
+const val AUTO_BACKUP_INTERVAL_OFF = 0
+val AUTO_BACKUP_INTERVAL_OPTIONS = listOf(0, 24, 72, 168)
 
 val DARK_MODE_DEFAULT = DarkMode.FOLLOW_SYSTEM
+val INSTALL_METHOD_DEFAULT = InstallMethod.SYSTEM
 val SOURCE_DEFAULT = Source.NONE
 val IMAGE_EDIT_DEFAULT = ImageEdit.NONE
 val TEXT_TYPE_DEFAULT = TextType.FULL_NAME
 val FALLBACK_SOURCE_DEFAULT = FallbackSource.NONE
 
 val DarkModeKey = intPreferencesKey(DARK_MODE_NAME)
+val InstallMethodKey = intPreferencesKey(INSTALL_METHOD_NAME)
+val ExternalInstallerComponentKey = stringPreferencesKey(EXTERNAL_INSTALLER_COMPONENT_NAME)
+val AskInstallerEveryTimeKey = booleanPreferencesKey(ASK_INSTALLER_EVERY_TIME_NAME)
+val InstallerChoiceConfirmedKey = booleanPreferencesKey(INSTALLER_CHOICE_CONFIRMED_NAME)
 val IncludeVectorKey = booleanPreferencesKey(INCLUDE_VECTOR_NAME)
 val MonochromeKey = booleanPreferencesKey(MONOCHROME_NAME)
 val ExportThemedKey = booleanPreferencesKey(EXPORT_THEMED_NAME)
@@ -142,6 +156,7 @@ val GlobalIconScaleKey = intPreferencesKey("GLOBAL_ICON_SCALE")
 val GlobalColorizeKey = booleanPreferencesKey("GLOBAL_COLORIZE")
 val GlobalColorizeColorKey = stringPreferencesKey("GLOBAL_COLORIZE_COLOR")
 val GlobalColorizeFlatKey = booleanPreferencesKey("GLOBAL_COLORIZE_FLAT")
+val GlobalColorizeLightenKey = booleanPreferencesKey("GLOBAL_COLORIZE_LIGHTEN")
 val GlobalColorizeMonochromeKey = booleanPreferencesKey("GLOBAL_COLORIZE_MONOCHROME")
 val GlobalColorizeInverseKey = booleanPreferencesKey("GLOBAL_COLORIZE_INVERSE")
 val GlobalColorizerModeKey = intPreferencesKey("GLOBAL_COLORIZER_MODE")
@@ -168,6 +183,9 @@ val AppSortOrderKey = intPreferencesKey(APP_SORT_ORDER_NAME)
 val AppFilterNoIconKey = booleanPreferencesKey(APP_FILTER_NO_ICON_NAME)
 val WatchCheckIntervalKey = intPreferencesKey(WATCH_CHECK_INTERVAL_NAME)
 val LastWatchCheckAtKey = longPreferencesKey(LAST_WATCH_CHECK_AT_NAME)
+val AutoBackupIntervalKey = intPreferencesKey(AUTO_BACKUP_INTERVAL_NAME)
+val AutoBackupTreeUriKey = stringPreferencesKey(AUTO_BACKUP_TREE_URI_NAME)
+val LastAutoBackupAtKey = longPreferencesKey(LAST_AUTO_BACKUP_AT_NAME)
 
 // Which profile's icons/preferences are active. Profiles snapshot/restore the keys below.
 val ActiveProfileIdKey = longPreferencesKey("ACTIVE_PROFILE_ID")
@@ -175,6 +193,9 @@ val ActiveProfileIdKey = longPreferencesKey("ACTIVE_PROFILE_ID")
 // First-run intro dismissed. App-level (not in ProfilePrefKeys): the intro explains the app,
 // not a profile, so switching or importing profiles must never bring it back by itself.
 val OnboardingSeenKey = booleanPreferencesKey("ONBOARDING_SEEN")
+
+// Last release notes dismissed by the user. App-level: profiles must not reopen them.
+val LastSeenWhatsNewVersionKey = intPreferencesKey("LAST_SEEN_WHATS_NEW_VERSION")
 
 // "Don't show again" for the pre-share warning (that a shared profile needs the source packs
 // installed on the other device). App-level: it's about the user's understanding, not a profile.
@@ -188,6 +209,7 @@ val HideProfileShareWarningKey = booleanPreferencesKey("HIDE_PROFILE_SHARE_WARNI
 private val ProfileBooleanPrefKeys: List<Preferences.Key<Boolean>> = listOf(
     IncludeVectorKey, MonochromeKey, ExportThemedKey, CalendarIconsKey, OverrideIconKey,
     OutlineAddKey, GlobalShapeCropKey, GlobalColorizeKey, GlobalColorizeFlatKey,
+    GlobalColorizeLightenKey,
     GlobalColorizeMonochromeKey, GlobalColorizeInverseKey,
     GlobalApplyGeneratedKey, GlobalApplyExistingKey, GlobalApplyCustomKey, GlobalIncludeEmptyKey
 )
@@ -263,6 +285,7 @@ private fun MutablePreferences.copyGlobalModifierPrefsFrom(source: Preferences) 
     this[GlobalColorizeKey] = source.getBooleanValue(GlobalColorizeKey)
     this[GlobalColorizeColorKey] = source.getStringValue(GlobalColorizeColorKey)
     this[GlobalColorizeFlatKey] = source.getBooleanValue(GlobalColorizeFlatKey)
+    this[GlobalColorizeLightenKey] = source.getBooleanValue(GlobalColorizeLightenKey)
     this[GlobalColorizeMonochromeKey] = source.getBooleanValue(GlobalColorizeMonochromeKey)
     this[GlobalColorizeInverseKey] = source.getBooleanValue(GlobalColorizeInverseKey)
     this[GlobalColorizerModeKey] = source.getIntValue(GlobalColorizerModeKey)
@@ -471,6 +494,9 @@ fun Preferences.getLongValue(key: Preferences.Key<Long>, default: Long = 0L): Lo
 
 fun normalizeWatchCheckInterval(minutes: Int): Int =
     minutes.takeIf { it >= WATCH_CHECK_INTERVAL_MIN } ?: WATCH_CHECK_INTERVAL_DEFAULT
+
+fun normalizeAutoBackupInterval(hours: Int): Int =
+    hours.takeIf(AUTO_BACKUP_INTERVAL_OPTIONS::contains) ?: AUTO_BACKUP_INTERVAL_OFF
 
 fun normalizeOutlineWidth(width: Int): Int = width.coerceIn(OUTLINE_WIDTH_MIN, OUTLINE_WIDTH_MAX)
 
@@ -776,6 +802,13 @@ fun isDarkModeEnabled(darkMode: DarkMode, system: Boolean): Boolean {
 
 enum class DarkMode {
     FOLLOW_SYSTEM, DARK, LIGHT
+}
+
+/** App-wide package installation route; it must not be captured in profile snapshots. */
+enum class InstallMethod {
+    SYSTEM,
+    SHIZUKU,
+    EXTERNAL
 }
 
 enum class AppSortOrder { NAME, INSTALL_DATE }

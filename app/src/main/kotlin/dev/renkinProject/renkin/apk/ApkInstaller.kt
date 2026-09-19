@@ -1,14 +1,24 @@
 package dev.renkinProject.renkin.apk
 
+import android.content.ClipData
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import androidx.core.content.FileProvider
 import androidx.core.content.pm.PackageInfoCompat
+import dev.renkinProject.renkin.data.InstallMethod
 import dev.renkinProject.renkin.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import ru.solrudev.ackpine.installer.PackageInstaller
 import ru.solrudev.ackpine.installer.createSession
 import ru.solrudev.ackpine.installer.parameters.InstallerType
 import ru.solrudev.ackpine.session.parameters.Confirmation
+import ru.solrudev.ackpine.shizuku.ShizukuPlugin
+import java.io.File
 
 enum class ApkInstallResult {
     SUCCESS,
@@ -22,77 +32,414 @@ enum class ApkInstallResult {
     FAILED
 }
 
-/** Typed system outcome plus the raw PackageInstaller detail needed for remote diagnostics. */
-data class ApkInstallOutcome(
+enum class ApkInstallBackend(val diagnosticName: String) {
+    SYSTEM_SESSION("System session"),
+    SHIZUKU("Shizuku"),
+    EXTERNAL("Selected external installer"),
+    COMPATIBILITY("Android compatibility intent")
+}
+
+data class ApkInstallAttempt(
+    val backend: ApkInstallBackend,
     val result: ApkInstallResult,
     val detail: String? = null
 )
 
-internal fun isDeadInstallerSession(outcome: ApkInstallOutcome): Boolean =
-    outcome.result == ApkInstallResult.FAILED &&
-        outcome.detail?.matches(Regex("Session \\d+ is dead\\.")) == true
+data class ApkInstallOutcome(
+    val result: ApkInstallResult,
+    val detail: String? = null,
+    val requestedMethod: InstallMethod = InstallMethod.SYSTEM,
+    val attempts: List<ApkInstallAttempt> = emptyList()
+)
 
-internal fun installationAdvanced(previousVersion: Long?, currentVersion: Long?): Boolean =
-    currentVersion != null && (previousVersion == null || currentVersion > previousVersion)
+internal const val APK_MIME_TYPE = "application/vnd.android.package-archive"
+
+internal data class InstalledPackageState(
+    val versionCode: Long,
+    val lastUpdateTime: Long
+)
+
+private val deadSessionPatterns = listOf(
+    Regex("(?:PackageInstaller\\.)?Session\\s+\\d+\\s+is\\s+(?:dead|abandoned)\\.?", RegexOption.IGNORE_CASE),
+    Regex("Package installer session\\s+\\d+\\s+was\\s+abandoned\\.?", RegexOption.IGNORE_CASE)
+)
+
+internal fun isDeadInstallerSession(outcome: ApkInstallOutcome): Boolean =
+    outcome.result == ApkInstallResult.FAILED && outcome.detail
+        ?.lineSequence()
+        ?.any { line -> deadSessionPatterns.any { it.containsMatchIn(line) } } == true
+
+internal fun installationChanged(
+    previous: InstalledPackageState?,
+    current: InstalledPackageState?
+): Boolean = current != null && (
+    previous == null ||
+        current.versionCode > previous.versionCode ||
+        current.versionCode == previous.versionCode && current.lastUpdateTime > previous.lastUpdateTime
+    )
 
 class ApkInstaller(context: Context) {
     private val appContext = context.applicationContext
     private val packageInstaller = PackageInstaller.getInstance(appContext)
 
-    suspend fun install(apk: Uri, packageName: String): ApkInstallOutcome {
-        val previousVersion = installedVersion(packageName)
-        val sessionOutcome = installWith(apk, InstallerType.SESSION_BASED)
-        if (!isDeadInstallerSession(sessionOutcome)) return sessionOutcome
+    suspend fun install(
+        apk: Uri,
+        packageName: String,
+        method: InstallMethod = InstallMethod.SYSTEM,
+        externalComponent: String = ""
+    ): ApkInstallOutcome {
+        val previous = installedState(packageName)
+        return when (method) {
+            InstallMethod.SYSTEM -> installThroughSystem(apk, packageName, previous, method)
+            InstallMethod.SHIZUKU -> installThroughShizuku(apk, packageName, previous)
+            InstallMethod.EXTERNAL -> installThroughExternal(
+                apk, packageName, previous, externalComponent
+            )
+        }
+    }
+
+    private suspend fun installThroughExternal(
+        apk: Uri,
+        packageName: String,
+        previous: InstalledPackageState?,
+        flattenedComponent: String
+    ): ApkInstallOutcome {
+        val component = ComponentName.unflattenFromString(flattenedComponent)
+        val sharedApk = runCatching { shareableApkUri(apk) }.getOrElse { error ->
+            val failedShare = ApkInstallAttempt(
+                ApkInstallBackend.EXTERNAL,
+                ApkInstallResult.FAILED,
+                "Could not create a content URI for the selected installer: ${error.stackTraceToString()}"
+            )
+            return installThroughSystem(
+                apk = apk,
+                packageName = packageName,
+                previous = previous,
+                requestedMethod = InstallMethod.EXTERNAL,
+                precedingAttempts = listOf(failedShare)
+            )
+        }
+        if (component == null || !isExternalComponentAvailable(component, sharedApk)) {
+            val unavailable = ApkInstallAttempt(
+                ApkInstallBackend.EXTERNAL,
+                ApkInstallResult.BLOCKED,
+                "The selected installer is no longer available: $flattenedComponent"
+            )
+            return installThroughSystem(
+                apk = apk,
+                packageName = packageName,
+                previous = previous,
+                requestedMethod = InstallMethod.EXTERNAL,
+                precedingAttempts = listOf(unavailable)
+            )
+        }
+
+        val result = launchAndAwaitExternalInstaller(sharedApk, packageName, previous, component)
+        val attempt = ApkInstallAttempt(ApkInstallBackend.EXTERNAL, result.first, result.second)
+        if (result.first == ApkInstallResult.FAILED) {
+            return installThroughSystem(
+                apk = apk,
+                packageName = packageName,
+                previous = previous,
+                requestedMethod = InstallMethod.EXTERNAL,
+                precedingAttempts = listOf(attempt)
+            )
+        }
+        return ApkInstallOutcome(
+            result = result.first,
+            detail = result.second,
+            requestedMethod = InstallMethod.EXTERNAL,
+            attempts = listOf(attempt)
+        )
+    }
+
+    private suspend fun launchAndAwaitExternalInstaller(
+        apk: Uri,
+        packageName: String,
+        previous: InstalledPackageState?,
+        component: ComponentName
+    ): Pair<ApkInstallResult, String> {
+        val returnGeneration = ExternalInstallAwaiter.currentGeneration()
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(apk, APK_MIME_TYPE)
+            this.component = component
+            clipData = ClipData.newRawUri("APK", apk)
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+            )
+            putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+            putExtra(Intent.EXTRA_INSTALLER_PACKAGE_NAME, appContext.packageName)
+        }
+        return try {
+            appContext.grantUriPermission(
+                component.packageName,
+                apk,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+            )
+            withContext(Dispatchers.Main) { appContext.startActivity(intent) }
+
+            var checksSinceReturn = 0
+            repeat(EXTERNAL_INSTALL_PACKAGE_CHECKS) {
+                if (installationChanged(previous, installedState(packageName))) {
+                    return ApkInstallResult.SUCCESS to
+                        "Package state confirmed installation through ${component.packageName}."
+                }
+                if (ExternalInstallAwaiter.currentGeneration() > returnGeneration) {
+                    checksSinceReturn++
+                    // Installers such as InstallerX close their UI and keep installing in the
+                    // background, so returning to Renkin only means "cancelled" once no install
+                    // session of theirs is still making progress.
+                    if (checksSinceReturn > EXTERNAL_RETURN_GRACE_CHECKS &&
+                        !hasActiveInstallSession(component.packageName, packageName)
+                    ) {
+                        return ApkInstallResult.ABORTED to
+                            "${component.packageName} returned without installing the package."
+                    }
+                }
+                delay(EXTERNAL_INSTALL_PACKAGE_CHECK_DELAY_MS)
+            }
+            ApkInstallResult.TIMEOUT to
+                "Timed out while waiting for ${component.packageName} to install $packageName."
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.error(TAG, "External installer could not be launched", e)
+            ApkInstallResult.FAILED to e.stackTraceToString()
+        } finally {
+            runCatching { appContext.revokeUriPermission(apk, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        }
+    }
+
+    private fun hasActiveInstallSession(installerPackage: String, packageName: String): Boolean =
+        runCatching {
+            appContext.packageManager.packageInstaller.allSessions.any { session ->
+                session.isActive && (
+                    session.appPackageName == packageName ||
+                        session.installerPackageName == installerPackage
+                    )
+            }
+        }.getOrDefault(false)
+
+    private fun isExternalComponentAvailable(component: ComponentName, apk: Uri): Boolean =
+        Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(apk, APK_MIME_TYPE)
+            this.component = component
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }.resolveActivity(appContext.packageManager) != null
+
+    /** Ackpine accepts the builder's file URI internally; another app must receive content://. */
+    private fun shareableApkUri(apk: Uri): Uri = when (apk.scheme) {
+        "content" -> apk
+        "file", null -> FileProvider.getUriForFile(
+            appContext,
+            "${appContext.packageName}.fileProvider",
+            File(requireNotNull(apk.path) { "APK file URI has no path" })
+        )
+        else -> error("Unsupported APK URI scheme: ${apk.scheme}")
+    }
+
+    private suspend fun installThroughShizuku(
+        apk: Uri,
+        packageName: String,
+        previous: InstalledPackageState?
+    ): ApkInstallOutcome {
+        val readiness = ShizukuSupport.state(appContext)
+        val initialAttempts = if (readiness == ShizukuState.READY) {
+            val outcome = installWith(apk, ApkInstallBackend.SHIZUKU)
+            if (outcome.result == ApkInstallResult.SUCCESS) {
+                return outcome.copy(requestedMethod = InstallMethod.SHIZUKU)
+            }
+            if (shouldVerifyLateResult(outcome.result) &&
+                awaitInstallation(previous, packageName)
+            ) {
+                return verifiedSuccess(InstallMethod.SHIZUKU, outcome.attempts, packageName)
+            }
+            outcome.attempts
+        } else {
+            listOf(
+                ApkInstallAttempt(
+                    backend = ApkInstallBackend.SHIZUKU,
+                    result = if (readiness == ShizukuState.ERROR) {
+                        ApkInstallResult.FAILED
+                    } else {
+                        ApkInstallResult.BLOCKED
+                    },
+                    detail = "Shizuku is unavailable: ${readiness.name}."
+                )
+            )
+        }
+
+        Log.debug(TAG, "Shizuku install unavailable or failed; retrying with system installer")
+        return installThroughSystem(
+            apk = apk,
+            packageName = packageName,
+            previous = previous,
+            requestedMethod = InstallMethod.SHIZUKU,
+            precedingAttempts = initialAttempts
+        )
+    }
+
+    private suspend fun installThroughSystem(
+        apk: Uri,
+        packageName: String,
+        previous: InstalledPackageState?,
+        requestedMethod: InstallMethod,
+        precedingAttempts: List<ApkInstallAttempt> = emptyList()
+    ): ApkInstallOutcome {
+        val sessionOutcome = installWith(apk, ApkInstallBackend.SYSTEM_SESSION)
+        val attempts = precedingAttempts + sessionOutcome.attempts
+        if (!isDeadInstallerSession(sessionOutcome)) {
+            return finishOutcome(requestedMethod, attempts, sessionOutcome, previous, packageName)
+        }
 
         // Some OEM installers remove the platform session before Ackpine receives its final
         // status broadcast. First accept an install that actually completed; otherwise retry
         // through Android's ACTION_INSTALL_PACKAGE path, which doesn't depend on that session.
-        if (awaitInstallation(previousVersion, packageName)) {
-            return ApkInstallOutcome(ApkInstallResult.SUCCESS)
+        if (awaitInstallation(previous, packageName)) {
+            return verifiedSuccess(requestedMethod, attempts, packageName)
         }
 
-        Log.error(TAG, "Native installer session died; retrying with intent-based installer")
-        val fallbackOutcome = installWith(apk, InstallerType.INTENT_BASED)
-        if (fallbackOutcome.result == ApkInstallResult.SUCCESS) return fallbackOutcome
-        // The fallback can report just as late as the session it replaced, so the package state
-        // — not the reported result — decides whether the user ends up with the new pack.
-        if (awaitInstallation(previousVersion, packageName)) {
-            return ApkInstallOutcome(ApkInstallResult.SUCCESS)
-        }
-        return fallbackOutcome.copy(
-            detail = buildString {
-                appendLine("Session-based installer: ${sessionOutcome.detail}")
-                appendLine(
-                    "Intent-based fallback: " +
-                        (fallbackOutcome.detail ?: "No additional details were provided by Android.")
-                )
-                append("Installed pack version: previous=${previousVersion ?: "none"}, ")
-                append("current=${installedVersion(packageName) ?: "none"}")
-            }
+        Log.error(TAG, "Native installer session died; retrying with compatibility installer")
+        return installThroughCompatibility(
+            apk = apk,
+            packageName = packageName,
+            previous = previous,
+            requestedMethod = requestedMethod,
+            precedingAttempts = attempts
         )
     }
 
-    /** Polls the package state, because a dead session says nothing about the install itself. */
-    private suspend fun awaitInstallation(previousVersion: Long?, packageName: String): Boolean {
+    private suspend fun installThroughCompatibility(
+        apk: Uri,
+        packageName: String,
+        previous: InstalledPackageState?,
+        requestedMethod: InstallMethod,
+        precedingAttempts: List<ApkInstallAttempt>
+    ): ApkInstallOutcome {
+        val fallbackOutcome = installWith(apk, ApkInstallBackend.COMPATIBILITY)
+        val attempts = precedingAttempts + fallbackOutcome.attempts
+        if (fallbackOutcome.result == ApkInstallResult.SUCCESS) {
+            return fallbackOutcome.copy(requestedMethod = requestedMethod, attempts = attempts)
+        }
+        // Late result delivery is meaningful for technical failures, but waiting after an
+        // explicit user cancellation would make the UI appear frozen for eight seconds.
+        if (shouldVerifyLateResult(fallbackOutcome.result) &&
+            awaitInstallation(previous, packageName)
+        ) {
+            return verifiedSuccess(requestedMethod, attempts, packageName)
+        }
+        return finishOutcome(requestedMethod, attempts, fallbackOutcome, previous, packageName)
+    }
+
+    private suspend fun awaitInstallation(
+        previous: InstalledPackageState?,
+        packageName: String
+    ): Boolean {
         repeat(DEAD_SESSION_PACKAGE_CHECKS) {
-            if (installationAdvanced(previousVersion, installedVersion(packageName))) return true
+            if (installationChanged(previous, installedState(packageName))) return true
             delay(DEAD_SESSION_PACKAGE_CHECK_DELAY_MS)
         }
         return false
     }
 
-    private suspend fun installWith(apk: Uri, installerType: InstallerType): ApkInstallOutcome {
-        val session = packageInstaller.createSession(apk) {
-            confirmation = Confirmation.IMMEDIATE
-            this.installerType = installerType
+    private suspend fun installWith(
+        apk: Uri,
+        backend: ApkInstallBackend
+    ): ApkInstallOutcome {
+        val rawOutcome = try {
+            val session = packageInstaller.createSession(apk) {
+                confirmation = Confirmation.IMMEDIATE
+                installerType = when (backend) {
+                    ApkInstallBackend.COMPATIBILITY -> InstallerType.INTENT_BASED
+                    ApkInstallBackend.EXTERNAL -> error("External installers do not use Ackpine sessions")
+                    ApkInstallBackend.SYSTEM_SESSION,
+                    ApkInstallBackend.SHIZUKU -> InstallerType.SESSION_BASED
+                }
+                if (backend == ApkInstallBackend.SHIZUKU) {
+                    plugin(
+                        ShizukuPlugin::class,
+                        ShizukuPlugin.InstallParameters.Builder()
+                            .setReplaceExisting(true)
+                            .build()
+                    )
+                }
+            }
+            session.awaitInstallResult(TAG)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.error(TAG, "${backend.diagnosticName} could not create or run a session", e)
+            ApkInstallOutcome(ApkInstallResult.FAILED, e.stackTraceToString())
         }
-        return session.awaitInstallResult(TAG)
+        return rawOutcome.copy(
+            attempts = listOf(ApkInstallAttempt(backend, rawOutcome.result, rawOutcome.detail))
+        )
     }
 
-    private fun installedVersion(packageName: String): Long? = runCatching {
+    private fun finishOutcome(
+        requestedMethod: InstallMethod,
+        attempts: List<ApkInstallAttempt>,
+        finalOutcome: ApkInstallOutcome,
+        previous: InstalledPackageState?,
+        packageName: String
+    ): ApkInstallOutcome {
+        if (finalOutcome.result == ApkInstallResult.SUCCESS) {
+            return finalOutcome.copy(requestedMethod = requestedMethod, attempts = attempts)
+        }
+        val current = installedState(packageName)
+        return finalOutcome.copy(
+            detail = buildDiagnosticDetail(attempts, previous, current),
+            requestedMethod = requestedMethod,
+            attempts = attempts
+        )
+    }
+
+    private fun verifiedSuccess(
+        requestedMethod: InstallMethod,
+        attempts: List<ApkInstallAttempt>,
+        packageName: String
+    ) = ApkInstallOutcome(
+        result = ApkInstallResult.SUCCESS,
+        detail = "Installation was confirmed from package state after a delayed installer callback.",
+        requestedMethod = requestedMethod,
+        attempts = attempts + ApkInstallAttempt(
+            backend = attempts.lastOrNull()?.backend ?: ApkInstallBackend.SYSTEM_SESSION,
+            result = ApkInstallResult.SUCCESS,
+            detail = "Package state confirmed the installed update for $packageName."
+        )
+    )
+
+    private fun installedState(packageName: String): InstalledPackageState? = runCatching {
         val packageInfo = appContext.packageManager.getPackageInfo(packageName, 0)
-        PackageInfoCompat.getLongVersionCode(packageInfo)
+        InstalledPackageState(
+            versionCode = PackageInfoCompat.getLongVersionCode(packageInfo),
+            lastUpdateTime = packageInfo.lastUpdateTime
+        )
     }.getOrNull()
+
+    private fun buildDiagnosticDetail(
+        attempts: List<ApkInstallAttempt>,
+        previous: InstalledPackageState?,
+        current: InstalledPackageState?
+    ): String = buildString {
+        attempts.forEachIndexed { index, attempt ->
+            appendLine("Attempt ${index + 1}: ${attempt.backend.diagnosticName} — ${attempt.result.name}")
+            appendLine(attempt.detail ?: "No additional details were provided by Android.")
+        }
+        append("Installed pack before: ${previous.describe()}; after: ${current.describe()}")
+    }
+
+    private fun InstalledPackageState?.describe(): String = this?.let {
+        "version=${it.versionCode}, lastUpdateTime=${it.lastUpdateTime}"
+    } ?: "not installed"
+
+    private fun shouldVerifyLateResult(result: ApkInstallResult): Boolean =
+        result == ApkInstallResult.FAILED || result == ApkInstallResult.TIMEOUT
 
     private companion object {
         const val TAG = "ApkInstaller"
@@ -100,5 +447,8 @@ class ApkInstaller(context: Context) {
         // session is gone, so the window has to outlast that scan (32 * 250 ms = 8 s).
         const val DEAD_SESSION_PACKAGE_CHECKS = 32
         const val DEAD_SESSION_PACKAGE_CHECK_DELAY_MS = 250L
+        const val EXTERNAL_INSTALL_PACKAGE_CHECKS = 480
+        const val EXTERNAL_RETURN_GRACE_CHECKS = 8
+        const val EXTERNAL_INSTALL_PACKAGE_CHECK_DELAY_MS = 250L
     }
 }

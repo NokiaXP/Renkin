@@ -68,6 +68,7 @@ import dev.renkinProject.renkin.data.Source
 import dev.renkinProject.renkin.data.TextType
 import dev.renkinProject.renkin.drawable.ResourceDrawable
 import dev.renkinProject.renkin.icon.creator.ColorizerStyle
+import dev.renkinProject.renkin.drawable.MaterialYouPackEditState
 import dev.renkinProject.renkin.icon.creator.GenerationOptions
 import dev.renkinProject.renkin.icon.creator.ApplicationIconVariant
 import dev.renkinProject.renkin.icon.creator.IconSortOrder
@@ -180,8 +181,11 @@ fun CreateTab(
     // Whether this app ships a Material You <monochrome> layer. Without one, the option remains
     // available but is explicitly described as an unofficial Renkin-generated approximation.
     appHasMaterialYouIcon: Boolean = false,
+    appHasAdaptiveIcon: Boolean = false,
     applicationIconVariant: ApplicationIconVariant = ApplicationIconVariant.DEFAULT,
     onApplicationIconVariantChange: (ApplicationIconVariant) -> Unit = {},
+    useFullApplicationIcon: Boolean = false,
+    onUseFullApplicationIconChange: (Boolean) -> Unit = {},
     invertMonochrome: Boolean = false,
     onInvertMonochromeChange: (Boolean) -> Unit = {},
     // Wallpaper-derived colour schemes (foreground, background) offered for Material You.
@@ -190,8 +194,8 @@ fun CreateTab(
     selectedScheme: Int = 0,
     onSchemeChange: (Int) -> Unit = {},
     // Custom-scheme foreground/background, edited inline when the Custom swatch is selected.
-    customForeground: ColorizerStyle = ColorizerStyle(firstColor = android.graphics.Color.WHITE),
-    customBackground: ColorizerStyle = ColorizerStyle(firstColor = android.graphics.Color.BLACK),
+    customForeground: ColorizerStyle = MaterialYouPackEditState.DEFAULT_FOREGROUND,
+    customBackground: ColorizerStyle = MaterialYouPackEditState.DEFAULT_BACKGROUND,
     onCustomForegroundChange: (ColorizerStyle) -> Unit = {},
     onCustomBackgroundChange: (ColorizerStyle) -> Unit = {},
     // The dialog's own pipeline with the draft colour substituted, so the colour sheet can show
@@ -345,7 +349,10 @@ fun CreateTab(
             Source.APPLICATION_ICON -> Box(Modifier.fillMaxSize().padding(contentPadding)) { ApplicationIconVariantSelector(
                 variant = applicationIconVariant,
                 appHasMaterialYouIcon = appHasMaterialYouIcon,
+                appHasAdaptiveIcon = appHasAdaptiveIcon,
                 onVariantChange = onApplicationIconVariantChange,
+                useFullApplicationIcon = useFullApplicationIcon,
+                onUseFullApplicationIconChange = onUseFullApplicationIconChange,
                 invertMonochrome = invertMonochrome,
                 onInvertMonochromeChange = onInvertMonochromeChange,
                 schemes = materialYouSchemes,
@@ -419,7 +426,10 @@ fun CreateTab(
 private fun ApplicationIconVariantSelector(
     variant: ApplicationIconVariant,
     appHasMaterialYouIcon: Boolean,
+    appHasAdaptiveIcon: Boolean,
     onVariantChange: (ApplicationIconVariant) -> Unit,
+    useFullApplicationIcon: Boolean,
+    onUseFullApplicationIconChange: (Boolean) -> Unit,
     invertMonochrome: Boolean,
     onInvertMonochromeChange: (Boolean) -> Unit,
     schemes: List<Pair<Color, Color>>,
@@ -477,6 +487,7 @@ private fun ApplicationIconVariantSelector(
             generatedMaterialYou -> stringResource(R.string.materialYouGeneratedHint)
             variant == ApplicationIconVariant.MATERIAL_YOU -> stringResource(R.string.materialYouRecolorHint)
             variant == ApplicationIconVariant.MONOCHROME -> stringResource(R.string.monochromeHint)
+            useFullApplicationIcon -> stringResource(R.string.fullApplicationIconHint)
             else -> stringResource(R.string.variantDefaultHint)
         }
         if (generatedMaterialYou) {
@@ -494,6 +505,26 @@ private fun ApplicationIconVariantSelector(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = if (generatedMaterialYou) 2.dp else 10.dp)
         )
+
+        if (variant == ApplicationIconVariant.DEFAULT && appHasAdaptiveIcon) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp)
+                    .clickable { onUseFullApplicationIconChange(!useFullApplicationIcon) },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.fullApplicationIcon),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f)
+                )
+                Switch(
+                    checked = useFullApplicationIcon,
+                    onCheckedChange = onUseFullApplicationIconChange
+                )
+            }
+        }
 
         if (variant == ApplicationIconVariant.MONOCHROME) {
             Row(

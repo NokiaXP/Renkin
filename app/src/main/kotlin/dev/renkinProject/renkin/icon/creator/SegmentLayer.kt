@@ -29,9 +29,10 @@ fun encodeColorizerStyle(style: ColorizerStyle): String = listOf(
     style.flat,
     style.monochrome,
     style.inverse,
-    // Appended last on purpose: an eight-field string written by an older build still decodes,
-    // and SegmentLayer reads the style by offset, so its own fields keep their indices.
-    style.gradientPositions.joinToString(LIST)
+    // New fields stay at the end so older style strings decode with their original defaults and
+    // SegmentLayer's leading target/tolerance fields keep their indices.
+    style.gradientPositions.joinToString(LIST),
+    style.lighten
 ).joinToString(FIELD)
 
 fun decodeColorizerStyle(encoded: String): ColorizerStyle? =
@@ -53,7 +54,8 @@ private fun decodeStyleFields(parts: List<String>, offset: Int): ColorizerStyle?
             gradientAngle = parts[offset + 4].toFloat(),
             flat = parts[offset + 5].toBooleanStrict(),
             monochrome = parts[offset + 6].toBooleanStrict(),
-            inverse = parts[offset + 7].toBooleanStrict()
+            inverse = parts[offset + 7].toBooleanStrict(),
+            lighten = parts.getOrNull(offset + 9)?.toBooleanStrictOrNull() ?: false
         )
     }.getOrNull()
 }

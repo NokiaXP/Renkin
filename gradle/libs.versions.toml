@@ -1,5 +1,6 @@
 [versions]
 ackpineCore = "0.25.4"
+shizuku = "13.1.5"
 agp = "8.9.0"
 androidx-activityCompose = "1.10.1"
 androidx-appcompat = "1.7.0"
@@ -21,6 +22,7 @@ ksp = "2.1.20-1.0.32"
 material3Android = "1.5.0-alpha14"
 roomKtx = "2.6.1"
 workRuntime = "2.9.1"
+windowManager = "1.5.1"
 androidSvg = "1.4"
 imageTracer = "1.0.3"
 cannyEdge = "1.0.2"
@@ -35,6 +37,9 @@ android-targetSdk = "35"
 [libraries]
 ackpine-core = { module = "ru.solrudev.ackpine:ackpine-core", version.ref = "ackpineCore" }
 ackpine-ktx = { module = "ru.solrudev.ackpine:ackpine-ktx", version.ref = "ackpineCore" }
+ackpine-shizuku = { module = "ru.solrudev.ackpine:ackpine-shizuku", version.ref = "ackpineCore" }
+shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku" }
+shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "androidx-core-ktx" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activityCompose" }
 androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "androidx-lifecycle" }
@@ -46,6 +51,7 @@ androidx-material3-android = { module = "androidx.compose.material3:material3-an
 androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "roomKtx" }
 androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "roomKtx" }
 androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "workRuntime" }
+androidx-window = { module = "androidx.window:window", version.ref = "windowManager" }
 hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
 hilt-compiler = { group = "com.google.dagger", name = "hilt-compiler", version.ref = "hilt" }
 androidx-hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-compose", version.ref = "hiltNavigationCompose" }

@@ -9,6 +9,7 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.VectorDrawable
 import android.os.Build
+import android.util.Xml
 import androidx.annotation.RequiresApi
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.core.graphics.drawable.toBitmap
@@ -24,11 +25,16 @@ import dev.renkinProject.renkin.extension.isAtEndDocument
 import dev.renkinProject.renkin.extension.parseUntil
 import dev.renkinProject.renkin.extension.safeNext
 import dev.renkinProject.renkin.extension.vectorResourceOrNull
+import org.xmlpull.v1.XmlPullParser
 
-class IconParser(private val resources: Resources) {
+class IconParser(private val resources: Resources, private val preserveFrameworkInsets: Boolean = false) {
     private fun parseDrawable(drawable: Drawable, drawableId: Int): Drawable {
         val parser = resources.getXmlOrNull(drawableId)
-        return parseDrawable(drawable, drawableId, parser)
+        return try {
+            parseDrawable(drawable, drawableId, parser)
+        } finally {
+            parser?.close()
+        }
     }
 
     private fun parseDrawable(drawable: Drawable): Drawable {
@@ -95,7 +101,12 @@ class IconParser(private val resources: Resources) {
             parseDrawable(insetDrawable.drawable!!)
         }
 
-        return InsetIconDrawable.from(insetDrawable, drawable)
+        // Clone the framework wrapper: its absolute and fractional insets can coexist on one side.
+        val copy = if (preserveFrameworkInsets) {
+            insetDrawable.constantState?.newDrawable(resources)?.mutate() as? InsetDrawable
+        } else null
+        return if (copy != null) copy.apply { setDrawable(drawable) }
+        else InsetIconDrawable.from(insetDrawable, drawable)
     }
 
     private fun parseVector(drawableId: Int, parser: XmlResourceParser?): ImageVectorDrawable? {
@@ -107,7 +118,7 @@ class IconParser(private val resources: Resources) {
             ImageVector.vectorResourceOrNull(resources, parser) ?: return null
         }
 
-        return ImageVectorDrawable(vector)
+        return ImageVectorDrawable(vector, scaleStrokesWithBounds = preserveFrameworkInsets)
     }
 
     private fun parseColorDrawable(drawable: ColorDrawable): BitmapIconDrawable {
@@ -119,12 +130,35 @@ class IconParser(private val resources: Resources) {
         val drawableAttribute = attributes.find { it.name == "drawable" }
 
         val id = drawableAttribute?.value?.replace("@", "")?.toIntOrNull() ?: -1
+        if (id > 0) return parseDrawable(drawable, id)
         return parseDrawable(drawable, id, parser)
     }
 
     companion object {
-        fun parseDrawable(resources: Resources, drawable: Drawable, drawableId: Int): Drawable {
-            val parser = IconParser(resources)
+        fun readMonochromeLayer(resources: Resources, drawableId: Int): Drawable? = runCatching {
+            val parser = resources.getXmlOrNull(drawableId) ?: return@runCatching null
+            parser.use {
+                while (parser.eventType != XmlPullParser.END_DOCUMENT) {
+                    if (parser.eventType == XmlPullParser.START_TAG && parser.name == "monochrome") {
+                        val id = parser.getAttributeResourceValue("http://schemas.android.com/apk/res/android", "drawable", 0)
+                        if (id != 0) return@runCatching resources.getDrawable(id, null)
+                        val depth = parser.depth
+                        while (parser.next() != XmlPullParser.END_DOCUMENT) {
+                            if (parser.eventType == XmlPullParser.END_TAG && parser.depth == depth) break
+                            if (parser.eventType == XmlPullParser.START_TAG) {
+                                return@runCatching Drawable.createFromXmlInner(resources, parser, Xml.asAttributeSet(parser), null)
+                            }
+                        }
+                        return@runCatching null
+                    }
+                    parser.next()
+                }
+                null
+            }
+        }.getOrNull()
+
+        fun parseDrawable(resources: Resources, drawable: Drawable, drawableId: Int, preserveFrameworkInsets: Boolean = false): Drawable {
+            val parser = IconParser(resources, preserveFrameworkInsets)
             return parser.parseDrawable(drawable, drawableId)
         }
     }

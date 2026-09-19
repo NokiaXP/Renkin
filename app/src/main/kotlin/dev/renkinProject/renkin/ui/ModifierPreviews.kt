@@ -27,14 +27,16 @@ import kotlinx.coroutines.sync.withLock
  * editor) build these the same way, so the wiring lives here instead of twice.
  */
 internal data class ModifierPreviews(
-    /** The icon as the colourize step sees it: no scale, offset, shape or outline yet. */
+    /** The icon as the colourize step sees it: no scale, offset, shape, outline or shadow yet. */
     val colorizeBase: Bitmap?,
     /** Current modifier stack rendered from an unclipped zero-offset canvas for auto-centering. */
     val positionBase: suspend () -> Bitmap?,
-    /** Remove-background output before scale, position, shape and outline alter its coordinates. */
+    /** Remove-background output before later geometry and silhouette treatments alter it. */
     val backgroundBrush: suspend () -> Bitmap?,
     val colorize: suspend (ColorizerStyle) -> Bitmap?,
+    val shape: suspend (ColorizerStyle) -> Bitmap?,
     val outline: suspend (ColorizerStyle) -> Bitmap?,
+    val shadow: suspend (ColorizerStyle) -> Bitmap?,
     /** Current icon rendered with a reusable preset substituted into its source-specific options. */
     val preset: suspend (ModifierPresetPayload) -> Bitmap?,
     /** Invalidates row previews when the current icon/options change. */
@@ -80,6 +82,7 @@ internal fun rememberModifierPreviews(
         iconOffsetY = 0f,
         iconShape = IconShape.NONE,
         outlineMode = OutlineMode.NONE,
+        shadowEnabled = false,
         outlineEraseMask = null,
         backgroundBrushOperations = emptyList()
     )
@@ -106,12 +109,16 @@ internal fun rememberModifierPreviews(
                         iconOffsetY = 0f,
                         iconShape = IconShape.NONE,
                         outlineMode = OutlineMode.NONE,
+                        shadowEnabled = false,
                         outlineEraseMask = null
                     )
                 )
             },
             colorize = { style ->
                 currentRender(currentOptions.withColorizerStyle(style))
+            },
+            shape = { style ->
+                currentRender(currentOptions.withShapeStyle(style))
             },
             outline = { style ->
                 currentRender(
@@ -121,6 +128,14 @@ internal fun rememberModifierPreviews(
                             ?: OutlineMode.ADD,
                         outlineColor = style.firstColor,
                         outlineStyle = style
+                    )
+                )
+            },
+            shadow = { style ->
+                currentRender(
+                    currentOptions.copy(
+                        shadowEnabled = true,
+                        shadowStyle = style
                     )
                 )
             },
@@ -186,6 +201,7 @@ internal fun GenerationOptions.withModifierAdjustments(
     iconOffsetX = adjustments.iconOffsetX,
     iconOffsetY = adjustments.iconOffsetY,
     colorizeFlat = adjustments.colorizeFlat,
+    colorizeLighten = adjustments.colorizeLighten,
     colorizeMonochrome = adjustments.colorizeMonochrome,
     colorizeInverse = adjustments.colorizeInverse,
     colorizerMode = adjustments.colorizerMode,
@@ -205,14 +221,7 @@ internal fun GenerationOptions.withModifierAdjustments(
     // Only the plate: bgColor also carries the Material You variant's background, which is a
     // two-tone scheme colour and must not inherit the shape's gradient.
     backgroundStyle = if (adjustments.iconShape != IconShape.NONE && !adjustments.shapeCrop) {
-        ColorizerStyle(
-            mode = adjustments.shapeColorizerMode,
-            gradientType = adjustments.shapeGradientType,
-            firstColor = adjustments.shapeColor.toArgb(),
-            gradientStops = adjustments.shapeGradientColors,
-            gradientPositions = adjustments.shapeGradientPositions,
-            gradientAngle = adjustments.shapeGradientAngle
-        )
+        adjustments.shapeStyle()
     } else {
         // No plate: whatever the caller set (the Material You variant's own fill) stands.
         backgroundStyle
@@ -220,15 +229,15 @@ internal fun GenerationOptions.withModifierAdjustments(
     outlineMode = adjustments.outlineMode,
     outlineWidth = adjustments.outlineWidth,
     outlineColor = adjustments.outlineColor.toArgb(),
-    outlineStyle = ColorizerStyle(
-        mode = adjustments.outlineColorizerMode,
-        gradientType = adjustments.outlineGradientType,
-        firstColor = adjustments.outlineColor.toArgb(),
-        gradientStops = adjustments.outlineGradientColors,
-        gradientPositions = adjustments.outlineGradientPositions,
-        gradientAngle = adjustments.outlineGradientAngle
-    ),
-    outlineEraseMask = outlineEraseMask
+    outlineStyle = adjustments.outlineStyle(),
+    outlineEraseMask = outlineEraseMask,
+    shadowEnabled = adjustments.shadowEnabled,
+    shadowBlur = adjustments.shadowBlur,
+    shadowDistance = adjustments.shadowDistance,
+    shadowAngle = adjustments.shadowAngle,
+    shadowAllDirections = adjustments.shadowAllDirections,
+    shadowStyle = adjustments.shadowStyle(),
+    shadowOpacity = adjustments.shadowOpacity
 )
 
 /** The options with [style] substituted for the colourize settings. */
@@ -236,6 +245,7 @@ internal fun GenerationOptions.withColorizerStyle(style: ColorizerStyle): Genera
     primaryImageEdit = ImageEdit.COLORIZE,
     color = style.firstColor,
     colorizeFlat = style.flat,
+    colorizeLighten = style.lighten,
     colorizeMonochrome = style.monochrome,
     colorizeInverse = style.inverse,
     colorizerMode = style.mode,
@@ -244,4 +254,9 @@ internal fun GenerationOptions.withColorizerStyle(style: ColorizerStyle): Genera
     colorizerGradientPositions = style.gradientPositions,
     colorizerGradientAngle = style.gradientAngle,
     colorizeLayers = emptyList()
+)
+
+internal fun GenerationOptions.withShapeStyle(style: ColorizerStyle): GenerationOptions = copy(
+    bgColor = style.firstColor,
+    backgroundStyle = style
 )

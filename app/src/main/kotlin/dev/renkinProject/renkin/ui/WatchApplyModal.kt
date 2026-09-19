@@ -221,7 +221,6 @@ fun WatchApplyModal(suggestionId: Long, onDismiss: () -> Unit) {
                             if (icon == null || targetApp == null) {
                                 onDismiss()
                             } else {
-                                val appliedSuggestionId = suggestionId
                                 val appliedRuleId = suggestion?.ruleId
                                 val appliedPack = selectedPack
                                 applying = true
@@ -241,6 +240,7 @@ fun WatchApplyModal(suggestionId: Long, onDismiss: () -> Unit) {
                                             IconApplyResult.APPLIED -> {
                                                 appliedRuleId?.let { watchViewModel.deleteRule(it) }
                                                 toaster.show(applyToast)
+                                                onDismiss()
                                             }
                                             IconApplyResult.LOCKED -> toaster.show(lockedToast)
                                             IconApplyResult.TARGET_GONE,
@@ -249,11 +249,6 @@ fun WatchApplyModal(suggestionId: Long, onDismiss: () -> Unit) {
                                         }
                                     } finally {
                                         applying = false
-                                        // A second notification may already own the modal. The old
-                                        // apply must never dismiss that newer suggestion.
-                                        if (viewModel.pendingWatchSuggestionId == appliedSuggestionId) {
-                                            onDismiss()
-                                        }
                                     }
                                 }
                             }

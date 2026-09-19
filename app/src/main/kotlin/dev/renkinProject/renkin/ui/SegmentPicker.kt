@@ -16,6 +16,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -57,7 +58,6 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -126,8 +126,6 @@ internal fun SegmentSelector(
         onTargetsChange(toggleSegmentTarget(targets, color))
     }
 
-    val wide = LocalConfiguration.current.screenWidthDp >= WIDE_LAYOUT_DP
-
     val canvas: @Composable (Modifier) -> Unit = { canvasModifier ->
         SegmentCanvas(
             icon = icon,
@@ -184,34 +182,47 @@ internal fun SegmentSelector(
         )
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        // Above the icon, because it is the answer to "what did I pick?" — and the only control
-        // that can undo a pick made before Detail re-clustered the artwork into other colours.
-        PickedSegmentChips(
-            targets = targets,
-            segments = segments,
-            onTargetsChange = onTargetsChange
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val paneLayout = horizontalPaneLayout(
+            availableWidth = maxWidth,
+            preferredLeadingWidth = WideCanvasSize,
+            minimumLeadingWidth = 220.dp,
+            minimumTrailingWidth = 320.dp,
+            dividerWidth = 16.dp
         )
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Above the icon, because it is the answer to "what did I pick?" — and the only control
+            // that can undo a pick made before Detail re-clustered the artwork into other colours.
+            PickedSegmentChips(
+                targets = targets,
+                segments = segments,
+                onTargetsChange = onTargetsChange
+            )
 
-        if (wide) {
-            // Wide screens: the icon is the thing being aimed at, so it gets its own column
-            // instead of pushing every control below the fold.
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                canvas(Modifier.width(WideCanvasSize))
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    content = controls
-                )
-            }
-        } else {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                canvas(
-                    Modifier
-                        .fillMaxWidth(0.55f)
-                        .align(Alignment.CenterHorizontally)
-                )
-                controls()
+            if (paneLayout != null) {
+                // Wide screens: the icon is the thing being aimed at, so it gets its own column
+                // instead of pushing every control below the fold.
+                Row(Modifier.fillMaxWidth()) {
+                    canvas(Modifier.width(paneLayout.leadingWidth))
+                    androidx.compose.foundation.layout.Spacer(Modifier.width(paneLayout.separatorWidth))
+                    Column(
+                        modifier = Modifier.width(paneLayout.trailingWidth),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        content = controls
+                    )
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    canvas(
+                        Modifier
+                            .fillMaxWidth(0.55f)
+                            .align(Alignment.CenterHorizontally)
+                    )
+                    controls()
+                }
             }
         }
     }

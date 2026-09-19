@@ -61,11 +61,11 @@ internal inline fun <T> readWatchPackOrNull(
  */
 class WatchChecker(
     context: Context,
-    private val iconPackCatalog: IconPackCatalog = IconPackCatalog(context)
+    private val iconPackCatalog: IconPackCatalog = IconPackCatalog(context),
+    private val repo: WatchRepository = WatchRepository(context)
 ) {
     private val appMan = ApplicationManager(context)
     private val installedAppCatalog = InstalledAppCatalog(context)
-    private val repo = WatchRepository(context)
 
     data class FiredSuggestion(
         val suggestionId: Long,
@@ -76,15 +76,28 @@ class WatchChecker(
         val profileId: Long
     )
 
-    suspend fun runCheck(): List<FiredSuggestion> = withContext(Dispatchers.Default) {
-        checkMutex.withLock { runCheckLocked() }
-    }
+    suspend fun runCheck(refreshCompletedSuggestions: Boolean = false): List<FiredSuggestion> =
+        withContext(Dispatchers.Default) {
+            checkMutex.withLock { runCheckLocked(refreshCompletedSuggestions) }
+        }
 
-    private suspend fun runCheckLocked(): List<FiredSuggestion> {
+    private suspend fun runCheckLocked(includeCompletedSuggestions: Boolean): List<FiredSuggestion> {
         val fired = mutableListOf<FiredSuggestion>()
         val installedPacks = watchablePacks()
         val installedAppsByPackage = installedAppCatalog.getAllInstalledApplications()
             .groupBy { it.packageName }
+        if (includeCompletedSuggestions) {
+            fired += refreshCompletedSuggestions(installedPacks, installedAppsByPackage)
+        }
+        fired += checkActiveRules(installedPacks, installedAppsByPackage)
+        return fired
+    }
+
+    private suspend fun checkActiveRules(
+        installedPacks: Map<String, IconPack>,
+        installedAppsByPackage: Map<String, List<InstalledApplication>>
+    ): List<FiredSuggestion> {
+        val fired = mutableListOf<FiredSuggestion>()
 
         for (rule in repo.getActiveRules()) {
             val packPackages = if (rule.rule.watchAllPacks) {
@@ -180,6 +193,53 @@ class WatchChecker(
         return fired
     }
 
+    private suspend fun refreshCompletedSuggestions(
+        installedPacks: Map<String, IconPack>,
+        installedAppsByPackage: Map<String, List<InstalledApplication>>
+    ): List<FiredSuggestion> {
+        val refreshed = mutableListOf<FiredSuggestion>()
+        for (rule in repo.getCompletedRules()) {
+            for (suggestion in rule.suggestions) {
+                val installedApp = installedAppsByPackage[suggestion.packageName]
+                    .orEmpty()
+                    .firstOrNull { it.activityName == suggestion.activityName }
+                    ?: continue
+                val storedCandidates = repo.getCandidates(suggestion.id)
+                val currentCandidates = storedCandidates.map { stored ->
+                    if (installedPacks[stored.iconPackPackage] == null) {
+                        return@map CandidateInput(
+                            stored.iconPackPackage,
+                            stored.drawableName,
+                            stored.iconHash
+                        )
+                    }
+                    val resolved = resolveIcon(stored.iconPackPackage, installedApp)
+                    val drawableName = resolved?.first
+                    val hash = resolved?.second
+                    if (drawableName != null && hash != null) {
+                        CandidateInput(stored.iconPackPackage, drawableName, hash)
+                    } else {
+                        CandidateInput(stored.iconPackPackage, stored.drawableName, stored.iconHash)
+                    }
+                }
+                val changed = currentCandidates.zip(storedCandidates).any { (current, stored) ->
+                    current.iconPackPackage != stored.iconPackPackage ||
+                        current.drawableName != stored.drawableName ||
+                        current.iconHash != stored.iconHash
+                }
+                if (!changed || !repo.replaceCandidates(suggestion.id, currentCandidates)) continue
+                refreshed += FiredSuggestion(
+                    suggestionId = suggestion.id,
+                    packageName = suggestion.packageName,
+                    activityName = suggestion.activityName,
+                    packPackages = currentCandidates.map { it.iconPackPackage },
+                    profileId = rule.rule.profileId
+                )
+            }
+        }
+        return refreshed
+    }
+
     /**
      * Resolves a rule's current icons and commits the rule plus its baseline atomically. The same
      * mutex guards checks, so no worker can see the rule before its baseline exists.
@@ -194,6 +254,27 @@ class WatchChecker(
         checkMutex.withLock {
             val baseline = buildBaseline(apps, watchAllPacks, packPackages)
             repo.saveRule(existingRuleId, apps, watchAllPacks, packPackages, profileId, baseline)
+        }
+    }
+
+    suspend fun initializeMissingBaselines() = withContext(Dispatchers.Default) {
+        checkMutex.withLock {
+            val installedPacks = watchablePacks()
+            for (rule in repo.getActiveRules()) {
+                val existing = repo.getStatesForRule(rule.rule.id)
+                    .mapTo(mutableSetOf()) {
+                        Triple(it.packageName, it.activityName, it.iconPackPackage)
+                    }
+                val baseline = buildBaseline(
+                    apps = rule.apps.map { AppComponent(it.packageName, it.activityName) },
+                    watchAllPacks = rule.rule.watchAllPacks,
+                    selectedPacks = rule.packs.map { it.iconPackPackage },
+                    installedPacks = installedPacks
+                ).filterNot {
+                    Triple(it.packageName, it.activityName, it.iconPackPackage) in existing
+                }
+                repo.upsertStates(rule.rule.id, baseline)
+            }
         }
     }
 
