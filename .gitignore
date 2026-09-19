@@ -16,6 +16,7 @@ mihon-reference/
 CLAUDE.local.md
 # Local AI workflow and tool state — never committed to the public repo
 /CLAUDE.md
+/.secrets/
 /.claude/
 # Local-only AI assistant tooling — never committed to the public repo.
 # codebase-memory-mcp binary + its per-agent MCP config; Codex's local AGENTS.md instructions.
