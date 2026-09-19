@@ -646,16 +646,25 @@
     <string name="globalResetChanges">Reset changes</string>
 
     <!-- First-run intro -->
-    <string name="onboardingSourceTitle">Pick your icon source</string>
-    <string name="onboardingSourceText">The card at the top decides where icons come from: an installed icon pack, the apps\' own icons, or their names as text.</string>
-    <string name="onboardingRefreshTitle">Refresh generates icons</string>
-    <string name="onboardingRefreshText">One tap creates an icon for every app. Empty slots fill in; icons you picked yourself are never replaced.</string>
-    <string name="onboardingEditTitle">Make any icon yours</string>
-    <string name="onboardingEditText">Tap an app to browse packs, upload an image or SVG, edit the vector, or crop it into a Material You shape.</string>
-    <string name="onboardingBuildTitle">Build your pack</string>
-    <string name="onboardingBuildText">Build icon pack compiles and installs a real icon pack APK — select it in your launcher and you\'re done.</string>
+    <string name="onboardingSourceTitle">Choose your icons</string>
+    <string name="onboardingSourceText">Start with an installed icon pack, each app\'s original icon, or text made from the app name.</string>
+    <string name="onboardingRefreshTitle">Create icons</string>
+    <string name="onboardingRefreshText">Advanced options change the whole pack. Tap Refresh to create icons and apply those changes. Icons you edited yourself stay the same.</string>
+    <string name="onboardingEditTitle">Edit one icon</string>
+    <string name="onboardingEditText">Tap an app to change its icon. Choose from a pack, upload an image or SVG, or use the built-in editors.</string>
+    <string name="onboardingBuildTitle">Build your icon pack</string>
+    <string name="onboardingBuildText">When your icons are ready, tap Build icon pack. Renkin installs it, then you can choose it in your launcher.</string>
     <string name="onboardingSkip">Skip</string>
+    <string name="onboardingBack">Back</string>
+    <string name="introStepCounter">%1$d of %2$d</string>
+    <string name="introWatchTitle">Get new icon alerts</string>
+    <string name="introWatchText">Choose apps to watch. Renkin lets you know when a watched icon pack adds a new icon for them.</string>
+    <string name="introProfileTitle">Keep different setups</string>
+    <string name="introProfileText">Tap the profile name to switch setups or make a new one. Each profile keeps its own icons and pack options.</string>
+    <string name="introSettingsTitle">Settings</string>
+    <string name="introSettingsText">Choose how packs are installed, create or restore a backup, and show this guide again.</string>
+    <string name="introInfoTitle">Help and feedback</string>
+    <string name="introInfoText">Open About to find Renkin on GitHub, report a problem, or suggest an improvement.</string>
     <string name="onboardingNext">Next</string>
-    <string name="onboardingStart">Start</string>
     <string name="showIntro">Show intro</string>
 </resources>
