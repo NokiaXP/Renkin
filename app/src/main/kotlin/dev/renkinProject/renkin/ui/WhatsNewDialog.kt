@@ -14,8 +14,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
@@ -53,18 +56,29 @@ private data class WhatsNewSection(
     val changes: List<Int>
 )
 
-private val latestChanges = listOf(
-    R.string.whatsNewAdaptiveIcons,
+private val latestNew = listOf(
     R.string.whatsNewShadow,
-    R.string.whatsNewColorize,
-    R.string.whatsNewWatch
+    R.string.whatsNewAutomaticBackups,
+    R.string.whatsNewInstallerChoice,
+    R.string.whatsNewIntro
 )
+private val latestChanged = listOf(
+    R.string.whatsNewColorize
+)
+private val latestFixed = listOf(R.string.whatsNewWatch)
 
 private val releaseHistory = listOf(
     WhatsNewRelease(
         LATEST_WHATS_NEW_VERSION_NAME,
         listOf(
-            WhatsNewSection(R.string.whatsNewSectionNew, latestChanges + R.string.whatsNewIntro),
+            WhatsNewSection(R.string.whatsNewSectionNew, latestNew),
+            WhatsNewSection(R.string.whatsNewSectionChanged, latestChanged),
+            WhatsNewSection(R.string.whatsNewSectionFixed, latestFixed)
+        )
+    ),
+    WhatsNewRelease(
+        "2026.08.03",
+        listOf(
             WhatsNewSection(R.string.whatsNewSectionFixed, listOf(R.string.whatsNewInstallFixes))
         )
     ),
@@ -175,9 +189,12 @@ fun WhatsNewDialog(onDismiss: () -> Unit) {
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                latestChanges.forEach { change -> WhatsNewItem(change) }
-            }
+            ReleaseSections(
+                release = releaseHistory.first(),
+                modifier = Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState())
+            )
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
@@ -274,6 +291,13 @@ private fun ReleaseNotes(release: WhatsNewRelease) {
             text = stringResource(R.string.whatsNewReleaseVersion, release.version),
             style = MaterialTheme.typography.headlineSmall
         )
+        ReleaseSections(release)
+    }
+}
+
+@Composable
+private fun ReleaseSections(release: WhatsNewRelease, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         release.sections.forEach { section ->
             Text(
                 text = stringResource(section.title),

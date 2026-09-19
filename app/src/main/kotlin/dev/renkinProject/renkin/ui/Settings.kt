@@ -109,6 +109,7 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
     var showStats by rememberSaveable { mutableStateOf(false) }
     var showCrashLogs by rememberSaveable { mutableStateOf(false) }
     var showWhatsNew by rememberSaveable { mutableStateOf(false) }
+    var showStartupWhatsNewPreview by rememberSaveable { mutableStateOf(false) }
     var showAbout by rememberSaveable { mutableStateOf(false) }
     var confirmClearIcons by rememberSaveable { mutableStateOf(false) }
     var showIpsBackupWarning by rememberSaveable { mutableStateOf(false) }
@@ -308,6 +309,12 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
                     }
                     if (BuildConfig.DEBUG) {
                         SettingsRow(
+                            Icons.Filled.NewReleases,
+                            stringResource(R.string.previewStartupWhatsNew)
+                        ) {
+                            showStartupWhatsNewPreview = true
+                        }
+                        SettingsRow(
                             Icons.Filled.Warning,
                             stringResource(R.string.forceCrash),
                             tint = MaterialTheme.colorScheme.error
@@ -371,6 +378,9 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
     }
     if (showWhatsNew) {
         WhatsNewScreen { showWhatsNew = false }
+    }
+    if (BuildConfig.DEBUG && showStartupWhatsNewPreview) {
+        WhatsNewDialog { showStartupWhatsNewPreview = false }
     }
     if (showAbout) {
         InfoDialog { showAbout = false }

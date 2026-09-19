@@ -1,0 +1,6 @@
+• Added automatic backups with five recent copies and a clear preview before restoring.
+• Choose the System installer, Shizuku or a compatible installer when building your first pack; the choice can be changed or shown every time from Settings.
+• Edit an app’s complete icon, or add a soft, hard or glow shadow to an individual icon.
+• Colorize can create lighter blends while preserving highlights and icon details ([#10](https://github.com/renkindevbugs/Renkin/issues/10)).
+• Improved Icon watch refreshes, completed suggestions and notification handling.
+• Added a guided tour and a What’s new history in Settings.

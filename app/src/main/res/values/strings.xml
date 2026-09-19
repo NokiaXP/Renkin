@@ -695,16 +695,18 @@
 
     <!-- What's new -->
     <string name="whatsNewTitle">What’s new</string>
+    <string name="previewStartupWhatsNew">Preview startup What’s new</string>
     <string name="whatsNewVersion">Version %1$s</string>
     <string name="whatsNewLatestCurrent">Latest: %1$s · Current: %2$s</string>
     <string name="whatsNewReleaseVersion">v%1$s</string>
     <string name="whatsNewSectionNew">New</string>
     <string name="whatsNewSectionChanged">Changed</string>
     <string name="whatsNewSectionFixed">Fixed</string>
-    <string name="whatsNewAdaptiveIcons">**Adaptive icons:** Keep their real layers when imported from an icon pack.</string>
-    <string name="whatsNewShadow">**Shadows:** Add a soft shadow, hard shadow or glow.</string>
-    <string name="whatsNewColorize">**Colours:** Use gradients, lighter blends and reusable presets.</string>
-    <string name="whatsNewWatch">**Icon watch:** Apply a new icon straight from its notification.</string>
+    <string name="whatsNewShadow">**Icon editing:** Use the full app icon or add a soft shadow, hard shadow or glow.</string>
+    <string name="whatsNewColorize">**Colours:** Create lighter blends while preserving the icon’s details.</string>
+    <string name="whatsNewAutomaticBackups">**Automatic backups:** Keep recent copies and preview a backup before restoring it.</string>
+    <string name="whatsNewInstallerChoice">**Installers:** Choose System, Shizuku or a compatible installer on your first build.</string>
+    <string name="whatsNewWatch">**Icon watch:** Recheck outdated suggestions and apply icons directly from notifications.</string>
     <string name="whatsNewIntro">**Guided tour:** Learn the main controls step by step.</string>
     <string name="whatsNewInstallFixes">**Installation:** More reliable pack installation with clearer errors.</string>
     <string name="whatsNewGlobalStyle">**Global Style:** A clearer editor with live previews and target controls.</string>
