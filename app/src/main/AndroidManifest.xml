@@ -8,6 +8,8 @@
 
     <queries>
         <package android:name="ru.tech.imageresizershrinker" />
+        <package android:name="moe.shizuku.privileged.api" />
+        <package android:name="af.shizuku.plus.api" />
         <intent>
             <action android:name="android.intent.action.MAIN" /> <!-- Allow to see all apps -->
         </intent>
