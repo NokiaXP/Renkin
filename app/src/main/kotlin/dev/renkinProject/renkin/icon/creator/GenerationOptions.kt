@@ -355,6 +355,21 @@ fun GenerationOptions.backgroundShader(width: Int, height: Int): android.graphic
     )
 }
 
+// The colourize settings gathered back into the style the editors and shaders work with.
+internal val GenerationOptions.colorizerStyle: ColorizerStyle
+    get() = ColorizerStyle(
+        mode = colorizerMode,
+        gradientType = colorizerGradientType,
+        firstColor = color,
+        gradientStops = colorizerGradientColors,
+        gradientPositions = colorizerGradientPositions,
+        gradientAngle = colorizerGradientAngle,
+        flat = colorizeFlat,
+        lighten = colorizeLighten,
+        monochrome = colorizeMonochrome,
+        inverse = colorizeInverse
+    )
+
 // Colorize blend for bitmap icons: SRC_IN replaces the icon's colours with the picked one (flat
 // fill), SCREEN lightens toward it, MULTIPLY tints them. Vectors recolour flat unless baked.
 internal val GenerationOptions.colorizeBlendMode: android.graphics.PorterDuff.Mode
@@ -365,9 +380,14 @@ internal val GenerationOptions.colorizeBlendMode: android.graphics.PorterDuff.Mo
         else -> android.graphics.PorterDuff.Mode.MULTIPLY
     }
 
+// Position, scale, shape, outline and shadow: everything [IconAdjustmentPipeline] applies after
+// the image edit. Callers that skip work when nothing changes must all agree on this list.
+fun GenerationOptions.hasIconAdjustments(): Boolean =
+    iconOffsetX != 0f || iconOffsetY != 0f || iconScale != 1f ||
+        iconShape != IconShape.NONE || outlineMode != OutlineMode.NONE || hasVisibleShadow()
+
 fun GenerationOptions.hasVisibleModifierEffect(): Boolean =
-    primaryImageEdit != ImageEdit.NONE || iconScale != 1f ||
-        iconShape != IconShape.NONE || outlineMode != OutlineMode.NONE || hasVisibleShadow() ||
+    primaryImageEdit != ImageEdit.NONE || hasIconAdjustments() ||
         materialYouPackForeground != null || materialYouPackBackground != null ||
         materialYouPackStrokeScale != 1f
 

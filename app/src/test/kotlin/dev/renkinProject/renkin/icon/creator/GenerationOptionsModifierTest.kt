@@ -67,4 +67,15 @@ class GenerationOptionsModifierTest {
             ).hasVisibleShadow()
         )
     }
+
+    @Test
+    fun hasIconAdjustments_coversEveryPostEditStep() {
+        assertFalse(options().hasIconAdjustments())
+        assertTrue(options().copy(iconOffsetX = 0.1f).hasIconAdjustments())
+        assertTrue(options().copy(iconScale = 0.8f).hasIconAdjustments())
+        assertTrue(options().copy(iconShape = IconShape.PEBBLE).hasIconAdjustments())
+        assertTrue(options().copy(outlineMode = OutlineMode.ADD).hasIconAdjustments())
+        assertTrue(options().copy(shadowEnabled = true).hasIconAdjustments())
+        assertFalse(options().copy(shadowEnabled = true, shadowOpacity = 0f).hasIconAdjustments())
+    }
 }

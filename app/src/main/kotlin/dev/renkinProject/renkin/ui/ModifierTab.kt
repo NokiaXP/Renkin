@@ -398,11 +398,11 @@ internal class AdjustmentState {
 }
 
 /** Saved-state value read back as a style, tolerating the plain ARGB int older builds wrote. */
-private fun Any?.toColorizerStyle(fallback: Int): ColorizerStyle = when (this) {
+private fun Any?.toColorizerStyle(fallback: ColorizerStyle): ColorizerStyle = when (this) {
     is String -> decodeColorizerStyle(this)
     is Int -> ColorizerStyle(firstColor = this)
     else -> null
-} ?: ColorizerStyle(firstColor = fallback)
+} ?: fallback
 
 @Stable
 internal class MaterialYouPackAdjustmentState(initial: MaterialYouPackEditState? = null) {
@@ -410,17 +410,17 @@ internal class MaterialYouPackAdjustmentState(initial: MaterialYouPackEditState?
     // Full styles, not plain colours: a pack's Material You icon keeps only the first stop (its
     // layers are paths), but the generated variant can carry the whole gradient.
     var customForeground by mutableStateOf(
-        initial?.customForeground ?: ColorizerStyle(firstColor = android.graphics.Color.WHITE)
+        initial?.customForeground ?: MaterialYouPackEditState.DEFAULT_FOREGROUND
     )
     var customBackground by mutableStateOf(
-        initial?.customBackground ?: ColorizerStyle(firstColor = android.graphics.Color.BLACK)
+        initial?.customBackground ?: MaterialYouPackEditState.DEFAULT_BACKGROUND
     )
     var strokeScale by mutableFloatStateOf(initial?.strokeScale ?: 1f)
 
     fun reset() {
         selectedScheme = -1
-        customForeground = ColorizerStyle(firstColor = android.graphics.Color.WHITE)
-        customBackground = ColorizerStyle(firstColor = android.graphics.Color.BLACK)
+        customForeground = MaterialYouPackEditState.DEFAULT_FOREGROUND
+        customBackground = MaterialYouPackEditState.DEFAULT_BACKGROUND
         strokeScale = 1f
     }
 
@@ -443,10 +443,10 @@ internal class MaterialYouPackAdjustmentState(initial: MaterialYouPackEditState?
                         selectedScheme = values.getOrNull(0) as? Int ?: -1
                         // Older saved states stored plain ARGB ints; both shapes restore.
                         customForeground = values.getOrNull(1).toColorizerStyle(
-                            android.graphics.Color.WHITE
+                            MaterialYouPackEditState.DEFAULT_FOREGROUND
                         )
                         customBackground = values.getOrNull(2).toColorizerStyle(
-                            android.graphics.Color.BLACK
+                            MaterialYouPackEditState.DEFAULT_BACKGROUND
                         )
                         strokeScale = values.getOrNull(3) as? Float ?: 1f
                     }

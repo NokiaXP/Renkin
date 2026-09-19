@@ -68,11 +68,10 @@ import dev.renkinProject.renkin.packages.supportDynamicColors
 import dev.renkinProject.renkin.drawable.ResourceDrawable
 import dev.renkinProject.renkin.drawable.toSafeBitmapOrNull
 import dev.renkinProject.renkin.icon.creator.GenerationOptions
-import dev.renkinProject.renkin.icon.creator.hasVisibleShadow
+import dev.renkinProject.renkin.icon.creator.hasIconAdjustments
 import dev.renkinProject.renkin.icon.creator.ApplicationIconVariant
 import dev.renkinProject.renkin.drawable.AdaptiveIconPackDrawable
 import dev.renkinProject.renkin.icon.creator.IconShape
-import dev.renkinProject.renkin.icon.creator.OutlineMode
 import dev.renkinProject.renkin.icon.creator.IconSortOrder
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -291,13 +290,8 @@ internal class IconDraftState(initialIcon: IconPackDrawable?) {
         val generation = ++vectorGeneration
         val generated = when {
             base == null -> null
-            // Only skip when there's truly nothing to apply — scale, shape and outline are
-            // applied by applyModifier too, so those changes with no image-edit must run it.
-            options.primaryImageEdit == ImageEdit.NONE && options.iconScale == 1f
-                && options.iconOffsetX == 0f && options.iconOffsetY == 0f
-                && options.iconShape == IconShape.NONE
-                && options.outlineMode == OutlineMode.NONE
-                && !options.hasVisibleShadow() -> base
+            // Adjustments without an image edit still go through applyModifier.
+            options.primaryImageEdit == ImageEdit.NONE && !options.hasIconAdjustments() -> base
             else -> trackGeneration { builder.applyModifier(base, options) }
         }
         if (generation == vectorGeneration) modifiedVector = generated

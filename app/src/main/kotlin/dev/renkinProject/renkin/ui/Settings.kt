@@ -71,18 +71,15 @@ import dev.renkinProject.renkin.BuildConfig
 import dev.renkinProject.renkin.MainViewModel
 import dev.renkinProject.renkin.R
 import dev.renkinProject.renkin.apk.ApplicationProvider
-import dev.renkinProject.renkin.apk.InstallerSelection
+import dev.renkinProject.renkin.apk.installerSelection
 import dev.renkinProject.renkin.data.DARK_MODE_DEFAULT
 import dev.renkinProject.renkin.data.DarkMode
 import dev.renkinProject.renkin.data.DarkModeKey
-import dev.renkinProject.renkin.data.INSTALL_METHOD_DEFAULT
 import dev.renkinProject.renkin.data.InstallMethod
-import dev.renkinProject.renkin.data.InstallMethodKey
-import dev.renkinProject.renkin.data.ExternalInstallerComponentKey
 import dev.renkinProject.renkin.data.AskInstallerEveryTimeKey
 import dev.renkinProject.renkin.data.getDarkModeLabels
 import dev.renkinProject.renkin.data.getEnumValue
-import dev.renkinProject.renkin.data.getStringValue
+import dev.renkinProject.renkin.data.getPreferencesValue
 import dev.renkinProject.renkin.data.getBooleanValue
 import dev.renkinProject.renkin.data.transfer.BackupManager
 import dev.renkinProject.renkin.util.CrashReporter
@@ -109,10 +106,7 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
     var showInstallerPicker by rememberSaveable { mutableStateOf(false) }
     var backupCheckInProgress by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val installerSelection = InstallerSelection(
-        method = prefs.getEnumValue(InstallMethodKey, INSTALL_METHOD_DEFAULT),
-        externalComponent = prefs.getStringValue(ExternalInstallerComponentKey)
-    )
+    val installerSelection = prefs.getPreferencesValue().installerSelection()
     val askInstallerEveryTime = prefs.getBooleanValue(AskInstallerEveryTimeKey)
     val installerLabel by produceState<String?>(null, installerSelection) {
         value = viewModel.installerLabel(installerSelection)
@@ -476,11 +470,15 @@ private fun InstallerMethodRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        Text(
-            text = selectedLabel,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        // The subtitle already names the installer unless the picker takes over; then the
+        // trailing label shows which option the picker will preselect.
+        if (askEveryTime) {
+            Text(
+                text = selectedLabel,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

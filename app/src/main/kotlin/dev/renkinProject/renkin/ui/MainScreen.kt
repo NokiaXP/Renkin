@@ -112,11 +112,7 @@ import dev.renkinProject.renkin.data.IconPack
 import dev.renkinProject.renkin.data.getBooleanValue
 import dev.renkinProject.renkin.data.getEnumValue
 import dev.renkinProject.renkin.data.getPreferencesValue
-import dev.renkinProject.renkin.data.InstallMethodKey
-import dev.renkinProject.renkin.data.INSTALL_METHOD_DEFAULT
-import dev.renkinProject.renkin.data.ExternalInstallerComponentKey
-import dev.renkinProject.renkin.data.getStringValue
-import dev.renkinProject.renkin.apk.InstallerSelection
+import dev.renkinProject.renkin.apk.installerSelection
 import androidx.hilt.navigation.compose.hiltViewModel
 import dev.renkinProject.renkin.GlobalOptionsActivity
 import dev.renkinProject.renkin.MainViewModel
@@ -326,10 +322,7 @@ fun MainColumn(iconPacks: List<IconPack>) {
 
     if (viewModel.installerSelectionPending) {
         InstallerPromptDialog(
-            selected = InstallerSelection(
-                method = prefs.getEnumValue(InstallMethodKey, INSTALL_METHOD_DEFAULT),
-                externalComponent = prefs.getStringValue(ExternalInstallerComponentKey)
-            ),
+            selected = prefs.getPreferencesValue().installerSelection(),
             onSelect = viewModel::confirmInstallerSelection,
             onDismiss = viewModel::dismissInstallerSelection
         )

@@ -26,6 +26,7 @@ import dev.renkinProject.renkin.apk.IconLockManager
 import dev.renkinProject.renkin.apk.InstallerCatalog
 import dev.renkinProject.renkin.apk.InstallerOption
 import dev.renkinProject.renkin.apk.InstallerSelection
+import dev.renkinProject.renkin.apk.installerSelection
 import dev.renkinProject.renkin.data.IconPack
 import dev.renkinProject.renkin.data.InstalledApplication
 import dev.renkinProject.renkin.data.AppFilterNoIconKey
@@ -35,7 +36,6 @@ import dev.renkinProject.renkin.data.DarkMode
 import dev.renkinProject.renkin.data.DarkModeKey
 import dev.renkinProject.renkin.data.InstallMethod
 import dev.renkinProject.renkin.data.InstallMethodKey
-import dev.renkinProject.renkin.data.INSTALL_METHOD_DEFAULT
 import dev.renkinProject.renkin.data.ExternalInstallerComponentKey
 import dev.renkinProject.renkin.data.AskInstallerEveryTimeKey
 import dev.renkinProject.renkin.data.HideProfileShareWarningKey
@@ -45,7 +45,6 @@ import dev.renkinProject.renkin.data.Source
 import dev.renkinProject.renkin.data.getPreferencesAfterPendingWrites
 import dev.renkinProject.renkin.data.getStringValue
 import dev.renkinProject.renkin.data.getBooleanValue
-import dev.renkinProject.renkin.data.getEnumValue
 import dev.renkinProject.renkin.data.setBooleanValue
 import dev.renkinProject.renkin.data.setEnumValue
 import dev.renkinProject.renkin.data.setPrimarySource
@@ -525,7 +524,10 @@ class MainViewModel @Inject constructor(
         val wasUpdate: Boolean,
         val packLabel: String,
         val selection: InstallerSelection
-    )
+    ) {
+        val failedMessage: Int
+            get() = if (wasUpdate) R.string.iconPackUpdateFailed else R.string.iconPackInstallFailed
+    }
 
     private var pendingInstallFallback: PendingPackInstall? = null
     var installFallbackPending by mutableStateOf(false)
@@ -575,7 +577,7 @@ class MainViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.error("MainViewModel", "Selected installer failed", e)
-                _toastEvents.trySend(R.string.iconPackInstallFailed)
+                _toastEvents.trySend(selectedPending.failedMessage)
             } finally {
                 buildStep = null
                 buildProgress = null
@@ -610,10 +612,7 @@ class MainViewModel @Inject constructor(
                     progressMethod = { done, total -> buildProgress = done to total }
                 )
                 val wasUpdate = isIconPackInstalled(pack.packageName)
-                val selection = InstallerSelection(
-                    method = preferences.getEnumValue(InstallMethodKey, INSTALL_METHOD_DEFAULT),
-                    externalComponent = preferences.getStringValue(ExternalInstallerComponentKey)
-                )
+                val selection = preferences.installerSelection()
                 val pending = PendingPackInstall(pack, wasUpdate, pack.packLabel, selection)
                 if (preferences.getBooleanValue(AskInstallerEveryTimeKey)) {
                     pendingInstallerSelection = pending
@@ -668,17 +667,17 @@ class MainViewModel @Inject constructor(
                 installFallbackPending = true
             } else {
                 syncBuildBaselines(pending.pack.profileId)
-                _toastEvents.trySend(R.string.iconPackInstallFailed)
+                _toastEvents.trySend(pending.failedMessage)
                 showInstallFailure(outcome, pending.pack)
             }
             ApkInstallResult.ABORTED -> {
                 syncBuildBaselines(pending.pack.profileId)
-                _toastEvents.trySend(R.string.iconPackInstallFailed)
+                _toastEvents.trySend(pending.failedMessage)
             }
             else -> {
                 // The pack was built and saved; only Android's installation step failed.
                 syncBuildBaselines(pending.pack.profileId)
-                _toastEvents.trySend(R.string.iconPackInstallFailed)
+                _toastEvents.trySend(pending.failedMessage)
                 showInstallFailure(outcome, pending.pack)
             }
         }
