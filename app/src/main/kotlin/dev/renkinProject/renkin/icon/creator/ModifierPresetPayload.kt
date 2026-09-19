@@ -208,6 +208,7 @@ fun GenerationOptions.withModifierPreset(payload: ModifierPresetPayload): Genera
             bgRemovalTolerance = effect.backgroundTolerance,
             color = effect.colorizerStyle.firstColor,
             colorizeFlat = effect.colorizerStyle.flat,
+            colorizeLighten = effect.colorizerStyle.lighten,
             colorizeMonochrome = effect.colorizerStyle.monochrome,
             colorizeInverse = effect.colorizerStyle.inverse,
             colorizerMode = effect.colorizerStyle.mode,

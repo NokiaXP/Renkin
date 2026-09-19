@@ -161,9 +161,11 @@ pack-wide colourize in Global/Advanced options, and the outline colour — so th
 identically and none of them re-implements the maths.
 
 - **`ColorizerStyle`** (`icon/creator/`) is the whole description: single colour or gradient,
-  gradient type/angle, 2–4 stops (`MIN_GRADIENT_STOPS`/`MAX_GRADIENT_STOPS`), plus the Solid
-  fill / Monochrome / Inverse flags. Those flags apply to gradients too: solid fill replaces the
-  artwork's RGB through its alpha, otherwise the gradient multiplies with it.
+  gradient type/angle, 2–10 stops (`MIN_GRADIENT_STOPS`/`MAX_GRADIENT_STOPS`), plus the Solid
+  fill / Lighten / Monochrome / Inverse flags. Those flags apply to gradients too: Solid replaces
+  the artwork's RGB through its alpha, the default Multiply blend darkens/tints it, and Lighten
+  uses Screen (`source + tint - source*tint`) for pastel results without Plus-mode clipping while
+  retaining each source pixel's alpha, so transparent canvas space never becomes a colour fill.
 - **`ColorizerShader.kt`** builds the actual `Shader` and is called by BOTH `IconGenerator` and
   the editor preview — a second implementation in the UI would drift from the built output.
 - **`ui/ColorStyleSheet.kt`** is the one editor UI: a bottom sheet with a docked live preview

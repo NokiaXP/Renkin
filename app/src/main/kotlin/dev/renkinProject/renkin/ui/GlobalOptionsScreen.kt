@@ -91,6 +91,7 @@ import dev.renkinProject.renkin.data.GlobalApplyCustomKey
 import dev.renkinProject.renkin.data.GlobalApplyExistingKey
 import dev.renkinProject.renkin.data.GlobalApplyGeneratedKey
 import dev.renkinProject.renkin.data.GlobalColorizeFlatKey
+import dev.renkinProject.renkin.data.GlobalColorizeLightenKey
 import dev.renkinProject.renkin.data.GlobalColorizeInverseKey
 import dev.renkinProject.renkin.data.GlobalColorizeKey
 import dev.renkinProject.renkin.data.GlobalColorizeMonochromeKey
@@ -236,8 +237,10 @@ internal class GlobalModifierState {
         outlineStyle = preferences.colorStyle(OutlineStyleKeys, Color.Black)
         colorize = preferences.getBooleanValue(GlobalColorizeKey)
         val monochrome = preferences.getBooleanValue(GlobalColorizeMonochromeKey)
+        val flat = preferences.getBooleanValue(GlobalColorizeFlatKey) && !monochrome
         colorizerStyle = preferences.colorStyle(GlobalColorizerStyleKeys, Color.White).copy(
-            flat = preferences.getBooleanValue(GlobalColorizeFlatKey) && !monochrome,
+            flat = flat,
+            lighten = preferences.getBooleanValue(GlobalColorizeLightenKey) && !monochrome && !flat,
             monochrome = monochrome,
             inverse = preferences.getBooleanValue(GlobalColorizeInverseKey)
         )
@@ -412,6 +415,7 @@ internal class GlobalModifierState {
         mutable[GlobalColorizeKey] = colorize
         mutable.writeColorStyle(GlobalColorizerStyleKeys, colorizerStyle)
         mutable[GlobalColorizeFlatKey] = colorizerStyle.flat
+        mutable[GlobalColorizeLightenKey] = colorizerStyle.lighten
         mutable[GlobalColorizeMonochromeKey] = colorizerStyle.monochrome
         mutable[GlobalColorizeInverseKey] = colorizerStyle.inverse
         mutable[GlobalApplyGeneratedKey] = applyGenerated
@@ -445,6 +449,7 @@ internal class GlobalModifierState {
         themed = false,
         override = true,
         colorizeFlat = colorizerStyle.flat,
+        colorizeLighten = colorizerStyle.lighten,
         colorizeMonochrome = colorizerStyle.monochrome,
         colorizeInverse = colorizerStyle.inverse,
         colorizerMode = colorizerStyle.mode,

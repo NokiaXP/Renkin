@@ -140,6 +140,7 @@ internal fun AdjustmentState.colorizerStyleWith(iconColor: Color): ColorizerStyl
     gradientPositions = colorizerGradientPositions,
     gradientAngle = colorizerGradientAngle,
     flat = colorizeFlat,
+    lighten = colorizeLighten,
     monochrome = colorizeMonochrome,
     inverse = colorizeInverse
 )
@@ -151,6 +152,7 @@ internal fun AdjustmentState.applyColorizerStyle(style: ColorizerStyle) {
     colorizerGradientPositions = style.gradientPositions
     colorizerGradientAngle = style.gradientAngle
     colorizeFlat = style.flat
+    colorizeLighten = style.lighten
     colorizeMonochrome = style.monochrome
     colorizeInverse = style.inverse
 }

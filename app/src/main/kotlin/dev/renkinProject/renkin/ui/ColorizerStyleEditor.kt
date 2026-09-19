@@ -169,7 +169,7 @@ internal fun ColorizerStyleEditor(
                 )
                 if (showSingleColorEffects) {
                     // Gradient mode keeps these values and honours them, it just has no room to
-                    // repeat the three switches under an already tall stop list — hence the
+                    // repeat the effect switches under an already tall stop list — hence the
                     // heading, so nobody thinks they only affect a single colour.
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                     Text(
@@ -192,6 +192,21 @@ internal fun ColorizerStyleEditor(
                             onStyleChange(
                                 style.copy(
                                     flat = it,
+                                    monochrome = if (it) false else style.monochrome,
+                                    lighten = if (it) false else style.lighten
+                                )
+                            )
+                        }
+                    )
+                    ColorizerSwitchRow(
+                        label = stringResource(R.string.colorizeLighten),
+                        hint = stringResource(R.string.colorizeLightenHint),
+                        checked = style.lighten,
+                        onCheckedChange = {
+                            onStyleChange(
+                                style.copy(
+                                    lighten = it,
+                                    flat = if (it) false else style.flat,
                                     monochrome = if (it) false else style.monochrome
                                 )
                             )
@@ -205,7 +220,8 @@ internal fun ColorizerStyleEditor(
                             onStyleChange(
                                 style.copy(
                                     monochrome = it,
-                                    flat = if (it) false else style.flat
+                                    flat = if (it) false else style.flat,
+                                    lighten = if (it) false else style.lighten
                                 )
                             )
                         }
@@ -233,7 +249,9 @@ internal fun ColorizerStyleEditor(
                         pickerIndex = it
                     }
                 )
-                if (showSingleColorEffects && (style.flat || style.monochrome || style.inverse)) {
+                if (showSingleColorEffects &&
+                    (style.flat || style.lighten || style.monochrome || style.inverse)
+                ) {
                     Text(
                         text = stringResource(R.string.colorizeEffectsActive),
                         style = MaterialTheme.typography.bodySmall,

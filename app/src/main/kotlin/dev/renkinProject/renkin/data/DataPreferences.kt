@@ -149,6 +149,7 @@ val GlobalIconScaleKey = intPreferencesKey("GLOBAL_ICON_SCALE")
 val GlobalColorizeKey = booleanPreferencesKey("GLOBAL_COLORIZE")
 val GlobalColorizeColorKey = stringPreferencesKey("GLOBAL_COLORIZE_COLOR")
 val GlobalColorizeFlatKey = booleanPreferencesKey("GLOBAL_COLORIZE_FLAT")
+val GlobalColorizeLightenKey = booleanPreferencesKey("GLOBAL_COLORIZE_LIGHTEN")
 val GlobalColorizeMonochromeKey = booleanPreferencesKey("GLOBAL_COLORIZE_MONOCHROME")
 val GlobalColorizeInverseKey = booleanPreferencesKey("GLOBAL_COLORIZE_INVERSE")
 val GlobalColorizerModeKey = intPreferencesKey("GLOBAL_COLORIZER_MODE")
@@ -195,6 +196,7 @@ val HideProfileShareWarningKey = booleanPreferencesKey("HIDE_PROFILE_SHARE_WARNI
 private val ProfileBooleanPrefKeys: List<Preferences.Key<Boolean>> = listOf(
     IncludeVectorKey, MonochromeKey, ExportThemedKey, CalendarIconsKey, OverrideIconKey,
     OutlineAddKey, GlobalShapeCropKey, GlobalColorizeKey, GlobalColorizeFlatKey,
+    GlobalColorizeLightenKey,
     GlobalColorizeMonochromeKey, GlobalColorizeInverseKey,
     GlobalApplyGeneratedKey, GlobalApplyExistingKey, GlobalApplyCustomKey, GlobalIncludeEmptyKey
 )
@@ -270,6 +272,7 @@ private fun MutablePreferences.copyGlobalModifierPrefsFrom(source: Preferences) 
     this[GlobalColorizeKey] = source.getBooleanValue(GlobalColorizeKey)
     this[GlobalColorizeColorKey] = source.getStringValue(GlobalColorizeColorKey)
     this[GlobalColorizeFlatKey] = source.getBooleanValue(GlobalColorizeFlatKey)
+    this[GlobalColorizeLightenKey] = source.getBooleanValue(GlobalColorizeLightenKey)
     this[GlobalColorizeMonochromeKey] = source.getBooleanValue(GlobalColorizeMonochromeKey)
     this[GlobalColorizeInverseKey] = source.getBooleanValue(GlobalColorizeInverseKey)
     this[GlobalColorizerModeKey] = source.getIntValue(GlobalColorizerModeKey)

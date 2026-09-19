@@ -112,6 +112,34 @@ fun gradientPixels(style: ColorizerStyle?, width: Int, height: Int): IntArray? {
     return pixels
 }
 
+// Canvas SCREEN paints the tint into transparent pixels, so preserve the source alpha explicitly.
+internal fun screenColorizeBitmap(source: Bitmap, tint: Int): Bitmap {
+    val pixels = IntArray(source.width * source.height)
+    source.getPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
+    val tintAlpha = android.graphics.Color.alpha(tint) / 255f
+    val tintRed = android.graphics.Color.red(tint) / 255f
+    val tintGreen = android.graphics.Color.green(tint) / 255f
+    val tintBlue = android.graphics.Color.blue(tint) / 255f
+
+    fun screen(sourceChannel: Int, tintChannel: Float): Int =
+        (sourceChannel + (255 - sourceChannel) * tintAlpha * tintChannel)
+            .toInt()
+            .coerceIn(0, 255)
+
+    for (index in pixels.indices) {
+        val original = pixels[index]
+        pixels[index] = android.graphics.Color.argb(
+            android.graphics.Color.alpha(original),
+            screen(android.graphics.Color.red(original), tintRed),
+            screen(android.graphics.Color.green(original), tintGreen),
+            screen(android.graphics.Color.blue(original), tintBlue)
+        )
+    }
+    return Bitmap.createBitmap(pixels, source.width, source.height, Bitmap.Config.ARGB_8888).apply {
+        density = source.density
+    }
+}
+
 /**
  * Applies [style] to [source] the way the generator's colourize step does — gradient through the
  * alpha mask, monochrome, solid fill or tint — and returns a new bitmap for the editor preview.
@@ -156,7 +184,11 @@ fun colorizeSampleBitmap(
                 source.height.toFloat(),
                 Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     shader = gradientShader()
-                    if (!solidFill) xfermode = PorterDuffXfermode(PorterDuff.Mode.MULTIPLY)
+                    if (!solidFill) {
+                        xfermode = PorterDuffXfermode(
+                            if (style.lighten) PorterDuff.Mode.SCREEN else PorterDuff.Mode.MULTIPLY
+                        )
+                    }
                 }
             )
         }
@@ -176,6 +208,16 @@ fun colorizeSampleBitmap(
         } else {
             drawArtwork()
             drawGradient()
+            if (style.lighten) {
+                canvas.drawBitmap(
+                    base,
+                    0f,
+                    0f,
+                    Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+                        xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+                    }
+                )
+            }
         }
         return if (style.inverse && !style.monochrome) invertBitmapColors(result) else result
     }
@@ -183,20 +225,27 @@ fun colorizeSampleBitmap(
     // Monochrome ignores the picked colour entirely, matching colorizeImage().
     if (style.monochrome) return monochromeBitmap(source, style.inverse)
 
-    val result = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
-    // Solid fill replaces the artwork's colours; the default tint multiplies with them.
-    val blend = if (style.flat) PorterDuff.Mode.SRC_IN else PorterDuff.Mode.MULTIPLY
-    Canvas(result).drawBitmap(
-        source,
-        0f,
-        0f,
-        Paint().apply {
-            colorFilter = PorterDuffColorFilter(
-                if (style.inverse) invertArgb(style.firstColor) else style.firstColor,
-                blend
-            )
-        }
-    )
+    val effectiveColor = if (style.inverse) invertArgb(style.firstColor) else style.firstColor
+    val result = if (style.lighten && !style.flat) {
+        screenColorizeBitmap(source, effectiveColor)
+    } else {
+        Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
+    }
+    // Solid replaces the artwork, while the default Multiply darkens/tints it.
+    val blend = when {
+        style.flat -> PorterDuff.Mode.SRC_IN
+        else -> PorterDuff.Mode.MULTIPLY
+    }
+    if (!style.lighten || style.flat) {
+        Canvas(result).drawBitmap(
+            source,
+            0f,
+            0f,
+            Paint().apply {
+                colorFilter = PorterDuffColorFilter(effectiveColor, blend)
+            }
+        )
+    }
     return if (style.inverse) invertBitmapColors(result) else result
 }
 

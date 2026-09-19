@@ -330,6 +330,8 @@
     <string name="removeBackgroundTolerance">Tolerance</string>
     <string name="colorizeSolid">Solid fill</string>
     <string name="colorizeSolidHint">Replace the icon\'s own colours with the picked one instead of blending, so the colour lands exactly.</string>
+    <string name="colorizeLighten">Lighten</string>
+    <string name="colorizeLightenHint">Blend toward the picked colour while preserving highlights, for lighter and pastel results.</string>
     <string name="colorizeMonochrome">Monochrome</string>
     <string name="colorizeMonochromeHint">Convert the icon to grayscale using the same result as Application icon → Monochrome.</string>
     <string name="colorizerSingleColor">One color</string>

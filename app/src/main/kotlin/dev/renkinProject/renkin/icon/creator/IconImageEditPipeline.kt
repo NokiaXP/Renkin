@@ -39,10 +39,10 @@ internal class IconImageEditPipeline(
     private val adjustments: IconAdjustmentPipeline = IconAdjustmentPipeline(resources, options)
 ) {
     private val colorizeMode
-        get() = if (options.colorizeFlat && !options.colorizeMonochrome) {
-            PorterDuff.Mode.SRC_IN
-        } else {
-            PorterDuff.Mode.MULTIPLY
+        get() = when {
+            options.colorizeFlat && !options.colorizeMonochrome -> PorterDuff.Mode.SRC_IN
+            options.colorizeLighten && !options.colorizeMonochrome -> PorterDuff.Mode.SCREEN
+            else -> PorterDuff.Mode.MULTIPLY
         }
 
     private val colorizeColor
@@ -72,6 +72,7 @@ internal class IconImageEditPipeline(
 
         if (imageEdit == ImageEdit.COLORIZE &&
             options.colorizerMode == ColorizerMode.SINGLE_COLOR &&
+            !options.colorizeLighten &&
             !options.colorizeMonochrome
         ) {
             adjustments.modifierVector(icon)?.let { vector ->
@@ -87,7 +88,8 @@ internal class IconImageEditPipeline(
                 ImageEdit.NONE -> icon
                 ImageEdit.COLORIZE_SEGMENTS -> colorize(copy.toBitmap(), colorizeMode)
                 ImageEdit.COLORIZE -> {
-                    if (options.colorizerMode == ColorizerMode.GRADIENT ||
+                    if (options.colorizeLighten ||
+                        options.colorizerMode == ColorizerMode.GRADIENT ||
                         options.colorizeMonochrome
                     ) {
                         colorize(copy.toBitmap(), colorizeMode)
@@ -143,7 +145,12 @@ internal class IconImageEditPipeline(
             fun channel(shift: Int): Int {
                 val value = (original ushr shift) and 255
                 val color = (tint ushr shift) and 255
-                return if (solid) color else (value * (1f - tintAlpha + tintAlpha * color / 255f)).toInt()
+                return when {
+                    solid -> color
+                    options.colorizeLighten ->
+                        (value + (255 - value) * tintAlpha * color / 255f).toInt()
+                    else -> (value * (1f - tintAlpha + tintAlpha * color / 255f)).toInt()
+                }
             }
             // Canvas MULTIPLY over a transparent layer would paint the entire gradient rectangle.
             val alpha = android.graphics.Color.alpha(original)
@@ -201,7 +208,8 @@ internal class IconImageEditPipeline(
         return BitmapIconDrawable(resources, colorizeBitmap(bitmap, mode))
     }
 
-    internal fun colorizeVector(vector: ImageVectorDrawable): ImageVectorDrawable {
+    internal fun colorizeVector(vector: ImageVectorDrawable): IconPackDrawable {
+        if (options.colorizeLighten) return colorize(vector.toBitmap(), colorizeMode)
         vector.root.editPathColors(
             SolidColor(Color.Unspecified),
             SolidColor(Color(colorizeColor))
@@ -256,15 +264,29 @@ internal class IconImageEditPipeline(
     }
 
     private fun colorizeBitmap(icon: Bitmap, mode: PorterDuff.Mode): Bitmap {
-        val coloredIcon = icon.emptyLike()
-        val paint = Paint().apply {
-            colorFilter = PorterDuffColorFilter(options.color, mode)
+        val source = if (options.themed) {
+            icon.emptyLike().also { scaled ->
+                Canvas(scaled).apply {
+                    scale(0.5f, 0.5f, icon.width * 0.5f, icon.height * 0.5f)
+                    drawBitmap(icon, 0f, 0f, Paint(Paint.FILTER_BITMAP_FLAG))
+                }
+            }
+        } else {
+            icon
         }
-        val canvas = Canvas(coloredIcon)
-        if (options.themed) {
-            canvas.scale(0.5f, 0.5f, icon.width * 0.5f, icon.height * 0.5f)
+        val coloredIcon = if (mode == PorterDuff.Mode.SCREEN) {
+            screenColorizeBitmap(source, options.color)
+        } else {
+            source.emptyLike().also { result ->
+                Canvas(result).drawBitmap(
+                    source,
+                    0f,
+                    0f,
+                    Paint().apply { colorFilter = PorterDuffColorFilter(options.color, mode) }
+                )
+            }
         }
-        canvas.drawBitmap(icon, 0f, 0f, paint)
+        if (source !== icon) source.recycle()
         val result = addBackground(coloredIcon)
         return if (options.colorizeInverse) invertBitmapColors(result) else result
     }
@@ -309,7 +331,12 @@ internal class IconImageEditPipeline(
                 icon.height.toFloat(),
                 Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     shader = gradient
-                    if (!solidFill) xfermode = PorterDuffXfermode(PorterDuff.Mode.MULTIPLY)
+                    if (!solidFill) {
+                        xfermode = PorterDuffXfermode(
+                            if (options.colorizeLighten) PorterDuff.Mode.SCREEN
+                            else PorterDuff.Mode.MULTIPLY
+                        )
+                    }
                 }
             )
         }
@@ -319,6 +346,19 @@ internal class IconImageEditPipeline(
         } else {
             drawMask()
             drawGradient()
+            if (options.colorizeLighten) {
+                val alphaMask = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+                    xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+                }
+                if (options.themed) {
+                    canvas.save()
+                    canvas.scale(0.5f, 0.5f, centerX, centerY)
+                    canvas.drawBitmap(base, 0f, 0f, alphaMask)
+                    canvas.restore()
+                } else {
+                    canvas.drawBitmap(base, 0f, 0f, alphaMask)
+                }
+            }
         }
         val tinted = if (options.colorizeInverse && !options.colorizeMonochrome) {
             invertBitmapColors(coloredIcon)

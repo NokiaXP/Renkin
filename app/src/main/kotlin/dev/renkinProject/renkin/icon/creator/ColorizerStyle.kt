@@ -23,7 +23,8 @@ data class ColorizerStyle(
     val gradientAngle: Float = 0f,
     val flat: Boolean = false,
     val monochrome: Boolean = false,
-    val inverse: Boolean = false
+    val inverse: Boolean = false,
+    val lighten: Boolean = false
 ) {
     /**
      * Every stop in paint order. Alpha is kept: a translucent stop lets the artwork show through,
