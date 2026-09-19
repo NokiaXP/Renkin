@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.InstallMobile
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.School
@@ -100,6 +102,7 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
 
     var showStats by rememberSaveable { mutableStateOf(false) }
     var showCrashLogs by rememberSaveable { mutableStateOf(false) }
+    var showWhatsNew by rememberSaveable { mutableStateOf(false) }
     var showAbout by rememberSaveable { mutableStateOf(false) }
     var confirmClearIcons by rememberSaveable { mutableStateOf(false) }
     var showIpsBackupWarning by rememberSaveable { mutableStateOf(false) }
@@ -257,22 +260,23 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
                         }
                     }
 
-                    // Footer: version on the left, About opening the info dialog on the right.
-                    HorizontalDivider(Modifier.padding(top = 16.dp))
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = stringResource(R.string.version, BuildConfig.VERSION_NAME),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f)
-                        )
-                        TextButton(onClick = { showAbout = true }) {
-                            Text(stringResource(R.string.aboutTitle))
-                        }
+                    SettingsSectionHeader(stringResource(R.string.aboutTitle))
+                    SettingsRow(Icons.Filled.NewReleases, stringResource(R.string.whatsNewTitle)) {
+                        showWhatsNew = true
                     }
+                    SettingsRow(Icons.Filled.Info, stringResource(R.string.aboutTitle)) {
+                        showAbout = true
+                    }
+
+                    // Footer: the app details live in the section above; keep the installed
+                    // version visible without turning it into another action.
+                    HorizontalDivider(Modifier.padding(top = 16.dp))
+                    Text(
+                        text = stringResource(R.string.version, BuildConfig.VERSION_NAME),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 16.dp)
+                    )
                 }
                 }
             }
@@ -308,6 +312,9 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
     }
     if (showCrashLogs) {
         CrashLogsScreen { showCrashLogs = false }
+    }
+    if (showWhatsNew) {
+        WhatsNewScreen { showWhatsNew = false }
     }
     if (showAbout) {
         InfoDialog { showAbout = false }

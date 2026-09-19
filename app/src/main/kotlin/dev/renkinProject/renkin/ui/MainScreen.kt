@@ -512,9 +512,12 @@ fun MainColumn(iconPacks: List<IconPack>) {
         }
     }
 
-    // Opened from an icon-watch notification → show the apply modal for that suggestion
+    // Release notes temporarily take the dialog slot. A notification's pending suggestion stays
+    // in the ViewModel and opens as soon as the notes close.
     val pendingSuggestion = viewModel.pendingWatchSuggestionId
-    if (pendingSuggestion != null) {
+    if (viewModel.whatsNewVisible) {
+        WhatsNewDialog(viewModel::dismissWhatsNew)
+    } else if (pendingSuggestion != null) {
         WatchApplyModal(pendingSuggestion) { viewModel.clearPendingWatchSuggestion() }
     }
 

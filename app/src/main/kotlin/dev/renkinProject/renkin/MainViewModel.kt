@@ -41,6 +41,7 @@ import dev.renkinProject.renkin.data.ExternalInstallerComponentKey
 import dev.renkinProject.renkin.data.AskInstallerEveryTimeKey
 import dev.renkinProject.renkin.data.HideProfileShareWarningKey
 import dev.renkinProject.renkin.data.OnboardingSeenKey
+import dev.renkinProject.renkin.data.LastSeenWhatsNewVersionKey
 import dev.renkinProject.renkin.data.PrimaryIconPackKey
 import dev.renkinProject.renkin.data.Source
 import dev.renkinProject.renkin.data.getPreferencesAfterPendingWrites
@@ -48,6 +49,7 @@ import dev.renkinProject.renkin.data.getStringValue
 import dev.renkinProject.renkin.data.getBooleanValue
 import dev.renkinProject.renkin.data.setBooleanValue
 import dev.renkinProject.renkin.data.setEnumValue
+import dev.renkinProject.renkin.data.setIntValue
 import dev.renkinProject.renkin.data.setPrimarySource
 import dev.renkinProject.renkin.data.setStringValue
 import dev.renkinProject.renkin.data.transfer.BackupManager
@@ -390,6 +392,7 @@ class MainViewModel @Inject constructor(
         // work hops to Dispatchers.Default inside each call, so viewModelScope (main)
         // is fine here.
         loadStartup()
+        loadWhatsNewState()
     }
 
     var isRefreshing by mutableStateOf(false)
@@ -447,6 +450,33 @@ class MainViewModel @Inject constructor(
 
     fun setOnboardingSeen(seen: Boolean) = updatePreferences {
         setBooleanValue(OnboardingSeenKey, seen)
+    }
+
+    var whatsNewVisible by mutableStateOf(false)
+        private set
+
+    private fun loadWhatsNewState() {
+        viewModelScope.launch {
+            val store = getApplication<Application>().dataStore
+            val preferences = store.getPreferencesAfterPendingWrites()
+            val lastSeen = preferences[LastSeenWhatsNewVersionKey]
+            if (shouldShowWhatsNew(
+                    lastSeenVersion = lastSeen,
+                    onboardingSeen = preferences.getBooleanValue(OnboardingSeenKey)
+                )
+            ) {
+                whatsNewVisible = true
+            } else if (lastSeen == null) {
+                store.setIntValue(LastSeenWhatsNewVersionKey, LATEST_WHATS_NEW_VERSION_CODE)
+            }
+        }
+    }
+
+    fun dismissWhatsNew() {
+        whatsNewVisible = false
+        updatePreferences {
+            setIntValue(LastSeenWhatsNewVersionKey, LATEST_WHATS_NEW_VERSION_CODE)
+        }
     }
 
     fun setDarkMode(mode: DarkMode) = updatePreferences {

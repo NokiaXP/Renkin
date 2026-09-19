@@ -184,6 +184,9 @@ val ActiveProfileIdKey = longPreferencesKey("ACTIVE_PROFILE_ID")
 // not a profile, so switching or importing profiles must never bring it back by itself.
 val OnboardingSeenKey = booleanPreferencesKey("ONBOARDING_SEEN")
 
+// Last release notes dismissed by the user. App-level: profiles must not reopen them.
+val LastSeenWhatsNewVersionKey = intPreferencesKey("LAST_SEEN_WHATS_NEW_VERSION")
+
 // "Don't show again" for the pre-share warning (that a shared profile needs the source packs
 // installed on the other device). App-level: it's about the user's understanding, not a profile.
 val HideProfileShareWarningKey = booleanPreferencesKey("HIDE_PROFILE_SHARE_WARNING")
