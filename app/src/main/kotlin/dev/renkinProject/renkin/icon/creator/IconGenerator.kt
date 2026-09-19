@@ -369,13 +369,16 @@ class IconGenerator(
         if (options.themed || !resource.drawable.isAdaptiveIconDrawable()) return null
         val source = resource.drawable.copyForRendering() as AdaptiveIconDrawable
         val changesWithMaterialYou = packChangesWithMaterialYouColors(packName)
-        val sourceMonochrome = if (source.haveMonochrome()) source.monochrome else {
+        // Parsed at most once: both the original and the restyled capture fall back to the same layer.
+        val packMonochrome by lazy {
             resourceResolver.getResources(packName)?.let {
                 IconParser.readMonochromeLayer(it, resource.resourceId)
             }
         }
+        fun monochromeOf(icon: AdaptiveIconDrawable) =
+            if (icon.haveMonochrome()) icon.monochrome else packMonochrome
         val original = if (changesWithMaterialYou) {
-            AdaptiveIconPackDrawable.capture(source, sourceMonochrome)
+            AdaptiveIconPackDrawable.capture(source, monochromeOf(source))
         } else null
         val restyle = options.materialYouPackForeground != null || options.materialYouPackBackground != null ||
             options.materialYouPackStrokeScale != 1f
@@ -385,22 +388,17 @@ class IconGenerator(
             } else source
             styleMaterialYouPackIcon(editable) as? AdaptiveIconDrawable ?: source
         } else source
-        val monochrome = if (styled.haveMonochrome()) styled.monochrome else {
-            resourceResolver.getResources(packName)?.let {
-                IconParser.readMonochromeLayer(it, resource.resourceId)
-            }
-        }
         val editState = if (changesWithMaterialYou) MaterialYouPackEditState(
             selectedScheme = options.materialYouPackSelectedScheme,
             customForeground = options.materialYouPackCustomForeground
-                ?: ColorizerStyle(firstColor = android.graphics.Color.WHITE),
+                ?: MaterialYouPackEditState.DEFAULT_FOREGROUND,
             customBackground = options.materialYouPackCustomBackground
-                ?: ColorizerStyle(firstColor = android.graphics.Color.BLACK),
+                ?: MaterialYouPackEditState.DEFAULT_BACKGROUND,
             strokeScale = options.materialYouPackStrokeScale
         ) else null
         return AdaptiveIconPackDrawable.capture(
             styled,
-            monochrome,
+            monochromeOf(styled),
             editState,
             originalForegroundPng = original?.foregroundPng.takeIf { restyle },
             originalBackgroundPng = original?.backgroundPng.takeIf { restyle }

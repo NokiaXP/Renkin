@@ -6,15 +6,11 @@ import androidx.datastore.preferences.core.Preferences
 import dev.renkinProject.renkin.data.CalendarIconsKey
 import dev.renkinProject.renkin.data.DbApplication
 import dev.renkinProject.renkin.data.ExportThemedKey
-import dev.renkinProject.renkin.data.INSTALL_METHOD_DEFAULT
-import dev.renkinProject.renkin.data.InstallMethodKey
-import dev.renkinProject.renkin.data.ExternalInstallerComponentKey
 import dev.renkinProject.renkin.data.PrimaryIconPackKey
 import dev.renkinProject.renkin.data.RenkinPackRepository
 import dev.renkinProject.renkin.data.getBooleanValue
 import dev.renkinProject.renkin.data.getDefaultBackgroundColor
 import dev.renkinProject.renkin.data.getDefaultIconColor
-import dev.renkinProject.renkin.data.getEnumValue
 import dev.renkinProject.renkin.data.getStringValue
 import dev.renkinProject.renkin.extension.toHexString
 import dev.renkinProject.renkin.packages.PackageInfoStruct
@@ -164,10 +160,7 @@ class IconPackBuildService internal constructor(
     private fun resolveInstaller(
         iconPack: BuiltIconPack,
         override: InstallerSelection?
-    ): InstallerSelection = override ?: InstallerSelection(
-        method = iconPack.preferences.getEnumValue(InstallMethodKey, INSTALL_METHOD_DEFAULT),
-        externalComponent = iconPack.preferences.getStringValue(ExternalInstallerComponentKey)
-    )
+    ): InstallerSelection = override ?: iconPack.preferences.installerSelection()
 
     private suspend fun runInstall(
         iconPack: BuiltIconPack,

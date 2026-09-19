@@ -28,7 +28,12 @@ data class MaterialYouPackEditState(
     val customForeground: ColorizerStyle,
     val customBackground: ColorizerStyle,
     val strokeScale: Float
-)
+) {
+    companion object {
+        val DEFAULT_FOREGROUND = ColorizerStyle(firstColor = android.graphics.Color.WHITE)
+        val DEFAULT_BACKGROUND = ColorizerStyle(firstColor = android.graphics.Color.BLACK)
+    }
+}
 
 class AdaptiveIconPackDrawable internal constructor(
     internal val foregroundPng: ByteArray,
@@ -46,9 +51,9 @@ class AdaptiveIconPackDrawable internal constructor(
         originalForegroundPng: ByteArray? = null,
         originalBackgroundPng: ByteArray? = null
     ) : this(
-        foreground.getBytes(Bitmap.CompressFormat.PNG, 100),
-        background.getBytes(Bitmap.CompressFormat.PNG, 100),
-        monochrome?.getBytes(Bitmap.CompressFormat.PNG, 100),
+        encodeLayer(foreground),
+        encodeLayer(background),
+        monochrome?.let(::encodeLayer),
         materialYouEditState,
         originalForegroundPng,
         originalBackgroundPng
@@ -82,17 +87,12 @@ class AdaptiveIconPackDrawable internal constructor(
     @Deprecated("Deprecated in Java")
     override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
 
-    fun withForeground(foreground: Bitmap): AdaptiveIconPackDrawable =
+    // A null monochrome keeps the current layer: only transforms that move the foreground pass one.
+    fun withForeground(foreground: Bitmap, monochrome: Bitmap? = null): AdaptiveIconPackDrawable =
         AdaptiveIconPackDrawable(
-            foreground.getBytes(Bitmap.CompressFormat.PNG, 100), backgroundPng, monochromePng,
-            materialYouEditState, originalForegroundPng, originalBackgroundPng
-        )
-
-    fun withForeground(foreground: Bitmap, monochrome: Bitmap?): AdaptiveIconPackDrawable =
-        AdaptiveIconPackDrawable(
-            foreground.getBytes(Bitmap.CompressFormat.PNG, 100),
+            encodeLayer(foreground),
             backgroundPng,
-            monochrome?.getBytes(Bitmap.CompressFormat.PNG, 100),
+            monochrome?.let(::encodeLayer) ?: monochromePng,
             materialYouEditState,
             originalForegroundPng,
             originalBackgroundPng
@@ -105,9 +105,9 @@ class AdaptiveIconPackDrawable internal constructor(
         originalForegroundPng: ByteArray? = this.originalForegroundPng ?: foregroundPng,
         originalBackgroundPng: ByteArray? = this.originalBackgroundPng ?: backgroundPng
     ): AdaptiveIconPackDrawable = AdaptiveIconPackDrawable(
-        foreground,
-        background,
-        monochrome,
+        encodeLayer(foreground),
+        encodeLayer(background),
+        monochromePng,
         state,
         originalForegroundPng,
         originalBackgroundPng
@@ -176,7 +176,14 @@ class AdaptiveIconPackDrawable internal constructor(
             isFilterBitmap = true
         }
 
-        private fun decodeLayer(png: ByteArray): Bitmap =
-            requireNotNull(BitmapFactory.decodeByteArray(png, 0, png.size)).apply { density = Bitmap.DENSITY_NONE }
+        private fun encodeLayer(layer: Bitmap): ByteArray = layer.getBytes(Bitmap.CompressFormat.PNG, 100)
+
+        // Payloads are only header-checked on load (a full decode per layer made startup slow), so a
+        // damaged layer renders as transparent instead of crashing the list.
+        private fun decodeLayer(png: ByteArray): Bitmap {
+            val layer = BitmapFactory.decodeByteArray(png, 0, png.size)
+                ?: Bitmap.createBitmap(LAYER_SIZE, LAYER_SIZE, Bitmap.Config.ARGB_8888)
+            return layer.apply { density = Bitmap.DENSITY_NONE }
+        }
     }
 }

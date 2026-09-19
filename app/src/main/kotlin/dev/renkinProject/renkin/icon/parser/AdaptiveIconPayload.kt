@@ -56,8 +56,6 @@ internal object AdaptiveIconPayload {
             val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(png, 0, png.size, options)
             require(options.outWidth == AdaptiveIconPackDrawable.LAYER_SIZE && options.outHeight == options.outWidth)
-            val bitmap = requireNotNull(BitmapFactory.decodeByteArray(png, 0, png.size))
-            bitmap.recycle()
             return png
         }
         val materialNode = node.children.singleOrNull { it.name == "material-you" }

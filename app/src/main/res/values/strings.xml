@@ -47,7 +47,6 @@
     <string name="shizukuPermissionDenied">Shizuku permission was denied. Grant it to enable silent installation.</string>
     <string name="shizukuReady">Ready for installation without the Android confirmation screen.</string>
     <string name="shizukuError">Shizuku status could not be read. The system installer will be used.</string>
-    <string name="shizukuGrantPermission">Grant Shizuku access</string>
     <string name="shizukuSystemFallback">Shizuku was unavailable, so the system installer was used</string>
     <string name="version">Version %s</string>
     <string name="aboutTitle">About</string>
@@ -468,6 +467,7 @@
     <string name="sortZToA">Z → A</string>
     <string name="iconPackBuildFailed">Couldn\'t build the icon pack</string>
     <string name="iconPackInstallFailed">The icon pack wasn\'t installed</string>
+    <string name="iconPackUpdateFailed">The icon pack wasn\'t updated</string>
     <string name="installFailureTitle">Icon pack installation failed</string>
     <string name="installFailureText">Android rejected the installation. Copy these diagnostic details and include them when reporting the problem.</string>
     <string name="installFailureCopy">Copy details</string>

@@ -68,6 +68,7 @@ import dev.renkinProject.renkin.data.Source
 import dev.renkinProject.renkin.data.TextType
 import dev.renkinProject.renkin.drawable.ResourceDrawable
 import dev.renkinProject.renkin.icon.creator.ColorizerStyle
+import dev.renkinProject.renkin.drawable.MaterialYouPackEditState
 import dev.renkinProject.renkin.icon.creator.GenerationOptions
 import dev.renkinProject.renkin.icon.creator.ApplicationIconVariant
 import dev.renkinProject.renkin.icon.creator.IconSortOrder
@@ -193,8 +194,8 @@ fun CreateTab(
     selectedScheme: Int = 0,
     onSchemeChange: (Int) -> Unit = {},
     // Custom-scheme foreground/background, edited inline when the Custom swatch is selected.
-    customForeground: ColorizerStyle = ColorizerStyle(firstColor = android.graphics.Color.WHITE),
-    customBackground: ColorizerStyle = ColorizerStyle(firstColor = android.graphics.Color.BLACK),
+    customForeground: ColorizerStyle = MaterialYouPackEditState.DEFAULT_FOREGROUND,
+    customBackground: ColorizerStyle = MaterialYouPackEditState.DEFAULT_BACKGROUND,
     onCustomForegroundChange: (ColorizerStyle) -> Unit = {},
     onCustomBackgroundChange: (ColorizerStyle) -> Unit = {},
     // The dialog's own pipeline with the draft colour substituted, so the colour sheet can show

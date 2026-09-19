@@ -9,12 +9,23 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
 import dev.renkinProject.renkin.R
+import androidx.datastore.preferences.core.Preferences
+import dev.renkinProject.renkin.data.ExternalInstallerComponentKey
+import dev.renkinProject.renkin.data.INSTALL_METHOD_DEFAULT
 import dev.renkinProject.renkin.data.InstallMethod
+import dev.renkinProject.renkin.data.InstallMethodKey
+import dev.renkinProject.renkin.data.getEnumValue
+import dev.renkinProject.renkin.data.getStringValue
 import dev.renkinProject.renkin.drawable.toSafeBitmapOrNull
 
 data class InstallerSelection(
     val method: InstallMethod,
     val externalComponent: String = ""
+)
+
+fun Preferences.installerSelection(): InstallerSelection = InstallerSelection(
+    method = getEnumValue(InstallMethodKey, INSTALL_METHOD_DEFAULT),
+    externalComponent = getStringValue(ExternalInstallerComponentKey)
 )
 
 data class InstallerOption(
@@ -134,7 +145,6 @@ class InstallerCatalog(context: Context) {
     }.getOrNull()
 
     private companion object {
-        const val APK_MIME_TYPE = "application/vnd.android.package-archive"
         val SHIZUKU_PACKAGES = listOf("moe.shizuku.privileged.api", "rikka.sui")
     }
 }

@@ -118,15 +118,7 @@ internal class IconImageEditPipeline(
         if (options.colorizerMode != ColorizerMode.GRADIENT) {
             return colorize(source, options.colorizeBlendMode).toBitmap()
         }
-        val style = ColorizerStyle(
-            mode = options.colorizerMode,
-            gradientType = options.colorizerGradientType,
-            firstColor = options.color,
-            gradientStops = options.colorizerGradientColors,
-            gradientPositions = options.colorizerGradientPositions,
-            gradientAngle = options.colorizerGradientAngle
-        )
-        val gradient = requireNotNull(gradientPixels(style, source.width, source.height))
+        val gradient = requireNotNull(gradientPixels(options.colorizerStyle, source.width, source.height))
         val base = if (options.colorizeMonochrome) monochromeBitmap(source, options.colorizeInverse) else source
         val pixels = IntArray(source.width * source.height)
         base.getPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
@@ -174,7 +166,7 @@ internal class IconImageEditPipeline(
         val foregroundColor = options.materialYouPackForeground ?: return icon
         val backgroundColor = options.materialYouPackBackground ?: return icon
         val foreground = tintAlphaLayer(icon.foreground, foregroundColor)
-        val background = newArgbBitmap(icon.background.width, icon.background.height) {
+        val background = newArgbBitmap(AdaptiveIconPackDrawable.LAYER_SIZE, AdaptiveIconPackDrawable.LAYER_SIZE) {
             it.drawColor(backgroundColor)
         }
         return icon.withMaterialYouLayers(foreground, background, state)
@@ -293,13 +285,14 @@ internal class IconImageEditPipeline(
         } else {
             icon
         }
+        val style = options.colorizerStyle
         val gradient = buildColorizerShader(
-            listOf(options.color) + options.colorizerGradientColors,
-            options.colorizerGradientType,
-            options.colorizerGradientAngle,
+            style.allGradientColors,
+            style.gradientType,
+            style.gradientAngle,
             icon.width,
             icon.height,
-            options.colorizerGradientPositions
+            style.gradientPositions
         )
         val coloredIcon = icon.emptyLike()
         val canvas = Canvas(coloredIcon)

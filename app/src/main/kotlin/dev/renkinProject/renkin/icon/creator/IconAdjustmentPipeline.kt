@@ -25,11 +25,11 @@ internal class IconAdjustmentPipeline(
     private val options: GenerationOptions
 ) {
     fun apply(icon: IconPackDrawable): IconPackDrawable {
+        if (!options.hasIconAdjustments()) return icon
         val offset = options.iconOffsetX != 0f || options.iconOffsetY != 0f
         val shaped = options.iconShape != IconShape.NONE
         val outlined = options.outlineMode != OutlineMode.NONE
         val shadowed = options.hasVisibleShadow()
-        if (!offset && options.iconScale == 1f && !shaped && !outlined && !shadowed) return icon
 
         if (icon is AdaptiveIconPackDrawable && !shaped && !outlined && !shadowed) {
             val layerOptions = options.copy(

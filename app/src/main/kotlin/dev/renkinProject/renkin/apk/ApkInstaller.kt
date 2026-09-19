@@ -52,6 +52,8 @@ data class ApkInstallOutcome(
     val attempts: List<ApkInstallAttempt> = emptyList()
 )
 
+internal const val APK_MIME_TYPE = "application/vnd.android.package-archive"
+
 internal data class InstalledPackageState(
     val versionCode: Long,
     val lastUpdateTime: Long
@@ -181,21 +183,23 @@ class ApkInstaller(context: Context) {
             )
             withContext(Dispatchers.Main) { appContext.startActivity(intent) }
 
+            var checksSinceReturn = 0
             repeat(EXTERNAL_INSTALL_PACKAGE_CHECKS) {
                 if (installationChanged(previous, installedState(packageName))) {
                     return ApkInstallResult.SUCCESS to
                         "Package state confirmed installation through ${component.packageName}."
                 }
                 if (ExternalInstallAwaiter.currentGeneration() > returnGeneration) {
-                    repeat(EXTERNAL_RETURN_GRACE_CHECKS) {
-                        delay(EXTERNAL_INSTALL_PACKAGE_CHECK_DELAY_MS)
-                        if (installationChanged(previous, installedState(packageName))) {
-                            return ApkInstallResult.SUCCESS to
-                                "Package state confirmed installation through ${component.packageName}."
-                        }
+                    checksSinceReturn++
+                    // Installers such as InstallerX close their UI and keep installing in the
+                    // background, so returning to Renkin only means "cancelled" once no install
+                    // session of theirs is still making progress.
+                    if (checksSinceReturn > EXTERNAL_RETURN_GRACE_CHECKS &&
+                        !hasActiveInstallSession(component.packageName, packageName)
+                    ) {
+                        return ApkInstallResult.ABORTED to
+                            "${component.packageName} returned without installing the package."
                     }
-                    return ApkInstallResult.ABORTED to
-                        "${component.packageName} returned without installing the package."
                 }
                 delay(EXTERNAL_INSTALL_PACKAGE_CHECK_DELAY_MS)
             }
@@ -210,6 +214,16 @@ class ApkInstaller(context: Context) {
             runCatching { appContext.revokeUriPermission(apk, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         }
     }
+
+    private fun hasActiveInstallSession(installerPackage: String, packageName: String): Boolean =
+        runCatching {
+            appContext.packageManager.packageInstaller.allSessions.any { session ->
+                session.isActive && (
+                    session.appPackageName == packageName ||
+                        session.installerPackageName == installerPackage
+                    )
+            }
+        }.getOrDefault(false)
 
     private fun isExternalComponentAvailable(component: ComponentName, apk: Uri): Boolean =
         Intent(Intent.ACTION_VIEW).apply {
@@ -433,7 +447,6 @@ class ApkInstaller(context: Context) {
         // session is gone, so the window has to outlast that scan (32 * 250 ms = 8 s).
         const val DEAD_SESSION_PACKAGE_CHECKS = 32
         const val DEAD_SESSION_PACKAGE_CHECK_DELAY_MS = 250L
-        const val APK_MIME_TYPE = "application/vnd.android.package-archive"
         const val EXTERNAL_INSTALL_PACKAGE_CHECKS = 480
         const val EXTERNAL_RETURN_GRACE_CHECKS = 8
         const val EXTERNAL_INSTALL_PACKAGE_CHECK_DELAY_MS = 250L
