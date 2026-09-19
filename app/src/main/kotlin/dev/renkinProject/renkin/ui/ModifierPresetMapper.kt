@@ -8,13 +8,14 @@ import dev.renkinProject.renkin.icon.creator.ModifierPresetEffect
 import dev.renkinProject.renkin.icon.creator.ModifierPresetOutline
 import dev.renkinProject.renkin.icon.creator.ModifierPresetPayload
 import dev.renkinProject.renkin.icon.creator.ModifierPresetShape
+import dev.renkinProject.renkin.icon.creator.ModifierPresetShadow
 
 /**
- * The four groups a preset can carry. They match how the Modifier tab is laid out, so "include
+ * The groups a preset can carry. They match how the Modifier tab is laid out, so "include
  * Shape" means exactly the block the user was just editing — not a set of fields they have to
  * reason about.
  */
-enum class ModifierPresetGroup { EFFECT, ICON_SCALE, SHAPE, OUTLINE }
+enum class ModifierPresetGroup { EFFECT, ICON_SCALE, SHAPE, OUTLINE, SHADOW }
 
 /**
  * What loading a preset changes outside [AdjustmentState]. The image modifier and the icon colour
@@ -68,6 +69,17 @@ internal fun captureModifierPreset(
             width = adjustments.outlineWidth,
             style = adjustments.outlineStyle()
         )
+    } else null,
+    shadow = if (ModifierPresetGroup.SHADOW in groups) {
+        ModifierPresetShadow(
+            enabled = adjustments.shadowEnabled,
+            blur = adjustments.shadowBlur,
+            distance = adjustments.shadowDistance,
+            angle = adjustments.shadowAngle,
+            allDirections = adjustments.shadowAllDirections,
+            style = adjustments.shadowStyle(),
+            opacity = adjustments.shadowOpacity
+        )
     } else null
 )
 
@@ -104,6 +116,15 @@ internal fun applyModifierPreset(
         adjustments.outlineWidth = outline.width
         adjustments.applyOutlineStyle(outline.style)
     }
+    payload.shadow?.let { shadow ->
+        adjustments.shadowEnabled = shadow.enabled
+        adjustments.shadowBlur = shadow.blur
+        adjustments.shadowDistance = shadow.distance
+        adjustments.shadowAngle = shadow.angle
+        adjustments.shadowAllDirections = shadow.allDirections
+        adjustments.applyShadowStyle(shadow.style)
+        adjustments.shadowOpacity = shadow.opacity
+    }
     return application
 }
 
@@ -118,6 +139,7 @@ internal fun defaultPresetGroups(adjustments: AdjustmentState, imageEdit: ImageE
         if (adjustments.outlineMode != dev.renkinProject.renkin.icon.creator.OutlineMode.NONE) {
             add(ModifierPresetGroup.OUTLINE)
         }
+        if (adjustments.shadowEnabled) add(ModifierPresetGroup.SHADOW)
     }
 
 /** Preserves a preset's original partial-group contract when the user updates it. */
@@ -126,6 +148,7 @@ internal fun ModifierPresetPayload.includedGroups(): Set<ModifierPresetGroup> = 
     if (iconScale != null) add(ModifierPresetGroup.ICON_SCALE)
     if (shape != null) add(ModifierPresetGroup.SHAPE)
     if (outline != null) add(ModifierPresetGroup.OUTLINE)
+    if (shadow != null) add(ModifierPresetGroup.SHADOW)
 }
 
 /**
@@ -191,6 +214,24 @@ internal fun AdjustmentState.applyOutlineStyle(style: ColorizerStyle) {
     outlineGradientColors = style.gradientStops
     outlineGradientPositions = style.gradientPositions
     outlineGradientAngle = style.gradientAngle
+}
+
+internal fun AdjustmentState.shadowStyle(): ColorizerStyle = ColorizerStyle(
+    mode = shadowColorizerMode,
+    gradientType = shadowGradientType,
+    firstColor = shadowColor.toArgb(),
+    gradientStops = shadowGradientColors,
+    gradientPositions = shadowGradientPositions,
+    gradientAngle = shadowGradientAngle
+)
+
+internal fun AdjustmentState.applyShadowStyle(style: ColorizerStyle) {
+    shadowColorizerMode = style.mode
+    shadowGradientType = style.gradientType
+    shadowColor = Color(style.firstColor)
+    shadowGradientColors = style.gradientStops
+    shadowGradientPositions = style.gradientPositions
+    shadowGradientAngle = style.gradientAngle
 }
 
 /**

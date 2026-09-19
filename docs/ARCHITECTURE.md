@@ -120,9 +120,10 @@ Switcher = the top-bar title dropdown.
   profile, rides the full backup (`BackupData.colorPresets`) and is never part of a shared
   profile file. The row stores the style as one encoded string (`encodeColorizerStyle`).
 - **`ModifierPreset` table** (same database, added in v18) — reusable Modifier-tab recipes,
-  ordered by last use and shared across profiles. Payload groups contain only portable settings;
-  position, picked areas, segment targets and brush strokes remain owned by the edited icon. The
-  library rides full backups but is not included in shared-profile exports.
+  ordered by last use and shared across profiles. Payload groups contain only portable settings,
+  including the optional final shadow; position, picked areas, segment targets and brush strokes
+  remain owned by the edited icon. The library rides full backups but is not included in
+  shared-profile exports.
 - **Room — `WatchDatabase`** (v3) — icon-watch rules, suggestions and per-rule baselines, owned per
   profile via `WatchRule.profileId`.
 
@@ -220,6 +221,17 @@ Remove background, Path, Edge and segment colorize consume the complete masked c
 and produce a non-adaptive result. Global modifiers continue deriving from the saved base icon,
 so disabling a flattening modifier restores the adaptive layers. The app-icon source's
 "Full app icon" behaviour and the explicit global themed export remain separate policies.
+
+The per-icon Shadow modifier runs last from the final alpha silhouette. Blur, direction, distance,
+opacity and the shared colour-or-gradient style are deterministic at the 256 px working scale.
+Direction can use an offset angle or a centred shadow whose distance expands the silhouette evenly
+in every direction. Since a launcher clips an adaptive drawable to its mask, enabling an outside shadow deliberately flattens only that icon
+to a legacy bitmap; disabling it keeps or restores the adaptive layers through the normal base-icon
+flow. Shadow settings are portable in modifier presets, while the applied result remains baked in
+the stored drawable like the other per-icon adjustments. On phones its editor is a modal dialog
+with a large live preview and one fine-tuning control at a time; the Direction control reuses the
+gradient angle dial. Wide two-pane layouts keep those controls inline beside their persistent
+preview.
 
 The existing rendered/base XML columns store a `renkin-adaptive-icon` payload. Version 2 also
 stores the selected Material You pack scheme, its custom styles, line weight and the original

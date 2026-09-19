@@ -11,6 +11,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -42,6 +44,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import dev.renkinProject.renkin.ui.theme.FieldShape
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -70,12 +73,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.Image
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.res.stringResource
@@ -83,6 +90,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.renkinProject.renkin.R
 import dev.renkinProject.renkin.ui.theme.CardShape
+import dev.renkinProject.renkin.ui.theme.DialogShape
 import dev.renkinProject.renkin.data.ImageEdit
 import dev.renkinProject.renkin.data.Source
 import dev.renkinProject.renkin.data.getImageEditLabels
@@ -158,6 +166,18 @@ internal class AdjustmentState {
     var outlineGradientColors by mutableStateOf(listOf(android.graphics.Color.BLACK))
     var outlineGradientPositions by mutableStateOf(emptyList<Float>())
     var outlineGradientAngle by mutableFloatStateOf(0f)
+    var shadowEnabled by mutableStateOf(false)
+    var shadowBlur by mutableFloatStateOf(12f)
+    var shadowDistance by mutableFloatStateOf(7f)
+    var shadowAngle by mutableFloatStateOf(135f)
+    var shadowAllDirections by mutableStateOf(false)
+    var shadowColor by mutableStateOf(Color.Black)
+    var shadowColorizerMode by mutableStateOf(ColorizerMode.SINGLE_COLOR)
+    var shadowGradientType by mutableStateOf(GradientType.LINEAR)
+    var shadowGradientColors by mutableStateOf(listOf(android.graphics.Color.BLACK))
+    var shadowGradientPositions by mutableStateOf(emptyList<Float>())
+    var shadowGradientAngle by mutableFloatStateOf(0f)
+    var shadowOpacity by mutableFloatStateOf(0.35f)
     // Eraser strokes masking where the outline must not apply. Deliberately NOT in [Saver]:
     // they're transient per-app geometry, and holding them out keeps the saver list flat.
     var eraseStrokes by mutableStateOf<List<BrushStroke>>(emptyList())
@@ -206,7 +226,19 @@ internal class AdjustmentState {
                     "outlineGradientType", it.outlineGradientType.ordinal,
                     "outlineGradientColors", it.outlineGradientColors,
                     "outlineGradientPositions", it.outlineGradientPositions,
-                    "outlineGradientAngle", it.outlineGradientAngle
+                    "outlineGradientAngle", it.outlineGradientAngle,
+                    "shadowEnabled", it.shadowEnabled,
+                    "shadowBlur", it.shadowBlur,
+                    "shadowDistance", it.shadowDistance,
+                    "shadowAngle", it.shadowAngle,
+                    "shadowAllDirections", it.shadowAllDirections,
+                    "shadowColor", it.shadowColor.toArgb(),
+                    "shadowColorizerMode", it.shadowColorizerMode.ordinal,
+                    "shadowGradientType", it.shadowGradientType.ordinal,
+                    "shadowGradientColors", it.shadowGradientColors,
+                    "shadowGradientPositions", it.shadowGradientPositions,
+                    "shadowGradientAngle", it.shadowGradientAngle,
+                    "shadowOpacity", it.shadowOpacity
                 )
             },
             restore = ::restoreAdjustmentState
@@ -304,6 +336,29 @@ internal class AdjustmentState {
                 ?.let { outlineGradientPositions = it }
             outlineGradientAngle =
                 saved["outlineGradientAngle"] as? Float ?: outlineGradientAngle
+            shadowEnabled = saved["shadowEnabled"] as? Boolean ?: shadowEnabled
+            shadowBlur = saved["shadowBlur"] as? Float ?: shadowBlur
+            shadowDistance = saved["shadowDistance"] as? Float ?: shadowDistance
+            shadowAngle = saved["shadowAngle"] as? Float ?: shadowAngle
+            shadowAllDirections =
+                saved["shadowAllDirections"] as? Boolean ?: shadowAllDirections
+            (saved["shadowColor"] as? Int)?.let { shadowColor = Color(it) }
+            shadowColorizerMode = ColorizerMode.entries.getOrElse(
+                saved["shadowColorizerMode"] as? Int ?: ColorizerMode.SINGLE_COLOR.ordinal
+            ) { ColorizerMode.SINGLE_COLOR }
+            shadowGradientType = GradientType.entries.getOrElse(
+                saved["shadowGradientType"] as? Int ?: GradientType.LINEAR.ordinal
+            ) { GradientType.LINEAR }
+            (saved["shadowGradientColors"] as? List<*>)
+                ?.filterIsInstance<Int>()
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { shadowGradientColors = it }
+            (saved["shadowGradientPositions"] as? List<*>)
+                ?.filterIsInstance<Float>()
+                ?.let { shadowGradientPositions = it }
+            shadowGradientAngle =
+                saved["shadowGradientAngle"] as? Float ?: shadowGradientAngle
+            shadowOpacity = saved["shadowOpacity"] as? Float ?: shadowOpacity
         }
 
         private fun restoreLegacy(saved: List<*>) = AdjustmentState().apply {
@@ -730,6 +785,12 @@ internal fun ModifierTab(
             renderPreview = previews?.outline,
             onOpenEraser = { eraseDialogOpen = true }
         )
+        ShadowSection(
+            adjustments = adjustments,
+            preview = centerPreview,
+            previewGenerating = previewGenerating,
+            renderPreview = previews?.shadow
+        )
         ExternalEditorSection(onEditExternally)
 
         // Presets close the tab: everything above is what a preset can capture, and loading one
@@ -1076,6 +1137,415 @@ private fun OutlineSection(
             }
         }
     }
+}
+
+private data class ShadowUiPreset(
+    val label: String,
+    val blur: Float,
+    val distance: Float,
+    val opacity: Float,
+    val allDirections: Boolean = false
+)
+
+private data class ShadowSettings(
+    val enabled: Boolean,
+    val blur: Float,
+    val distance: Float,
+    val angle: Float,
+    val allDirections: Boolean,
+    val style: ColorizerStyle,
+    val opacity: Float
+)
+
+private enum class ShadowControl { BLUR, DISTANCE, DIRECTION, OPACITY }
+
+@Composable
+private fun ShadowSection(
+    adjustments: AdjustmentState,
+    preview: Bitmap?,
+    previewGenerating: Boolean,
+    renderPreview: (suspend (ColorizerStyle) -> Bitmap?)?
+) {
+    var editorOpen by remember { mutableStateOf(false) }
+    var originalSettings by remember { mutableStateOf<ShadowSettings?>(null) }
+    val adaptiveLayoutInfo = LocalAdaptiveLayoutInfo.current
+    val hasPersistentPreview = horizontalPaneLayout(
+        availableWidth = adaptiveLayoutInfo.windowWidth,
+        preferredLeadingWidth = 320.dp,
+        minimumLeadingWidth = 280.dp,
+        minimumTrailingWidth = 360.dp,
+        separatingVerticalHinge = adaptiveLayoutInfo.separatingVerticalHinge
+    ) != null
+
+    fun openEditor() {
+        originalSettings = adjustments.shadowSettings()
+        adjustments.shadowEnabled = true
+        editorOpen = true
+    }
+
+    val presets = listOf(
+        ShadowUiPreset(stringResource(R.string.shadowPresetSubtle), 4f, 2f, 0.2f),
+        ShadowUiPreset(stringResource(R.string.shadowPresetSoft), 14f, 7f, 0.32f),
+        ShadowUiPreset(stringResource(R.string.shadowPresetHard), 1f, 12f, 0.65f),
+        ShadowUiPreset(
+            stringResource(R.string.shadowPresetGlow),
+            blur = 24f,
+            distance = 20f,
+            opacity = 0.7f,
+            allDirections = true
+        )
+    )
+
+    Text(
+        text = stringResource(R.string.shadowTitle),
+        style = MaterialTheme.typography.titleSmallEmphasized,
+        color = MaterialTheme.colorScheme.onSurface
+    )
+    if (hasPersistentPreview) {
+        if (adjustments.shadowEnabled) {
+            OptionGroup {
+                ShadowEditorControls(
+                    adjustments = adjustments,
+                    presets = presets,
+                    renderPreview = renderPreview
+                )
+                TextButton(
+                    onClick = { adjustments.shadowEnabled = false },
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(stringResource(R.string.shadowRemove))
+                }
+            }
+        } else {
+            OptionCard(
+                label = stringResource(R.string.shadowEnabled),
+                onClick = { adjustments.shadowEnabled = true },
+                trailing = {
+                    Text(
+                        text = stringResource(R.string.shadowNone),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            )
+        }
+    } else {
+        OptionCard(
+            label = stringResource(R.string.shadowEnabled),
+            selected = adjustments.shadowEnabled,
+            onClick = ::openEditor,
+            trailing = {
+                Text(
+                    text = if (adjustments.shadowEnabled) {
+                        stringResource(
+                            R.string.shadowCardSummary,
+                            adjustments.shadowBlur.roundToInt(),
+                            (adjustments.shadowOpacity * 100).roundToInt()
+                        )
+                    } else {
+                        stringResource(R.string.shadowNone)
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        )
+    }
+
+    if (editorOpen) {
+        ShadowEditorSheet(
+            adjustments = adjustments,
+            presets = presets,
+            preview = preview,
+            previewGenerating = previewGenerating,
+            renderPreview = renderPreview,
+            showRemove = originalSettings?.enabled == true,
+            onDismiss = {
+                originalSettings?.applyTo(adjustments)
+                originalSettings = null
+                editorOpen = false
+            },
+            onApply = {
+                originalSettings = null
+                editorOpen = false
+            },
+            onRemove = {
+                adjustments.shadowEnabled = false
+                originalSettings = null
+                editorOpen = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun ShadowEditorSheet(
+    adjustments: AdjustmentState,
+    presets: List<ShadowUiPreset>,
+    preview: Bitmap?,
+    previewGenerating: Boolean,
+    renderPreview: (suspend (ColorizerStyle) -> Bitmap?)?,
+    showRemove: Boolean,
+    onDismiss: () -> Unit,
+    onApply: () -> Unit,
+    onRemove: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = true)
+    ) {
+        Surface(
+            shape = DialogShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 720.dp)
+        ) {
+            Column {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.shadowTitle),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Surface(
+                        shape = CardShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
+                        modifier = Modifier.size(112.dp)
+                    ) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            preview?.let {
+                                Image(
+                                    bitmap = it.asImageBitmap(),
+                                    contentDescription = stringResource(R.string.shadowPreview),
+                                    modifier = Modifier
+                                        .padding(6.dp)
+                                        .fillMaxSize()
+                                )
+                            }
+                            if (previewGenerating) {
+                                WavyLoadingBar(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+                }
+                androidx.compose.material3.HorizontalDivider()
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    ShadowEditorControls(
+                        adjustments = adjustments,
+                        presets = presets,
+                        renderPreview = renderPreview
+                    )
+                }
+                androidx.compose.material3.HorizontalDivider()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End)
+                ) {
+                    if (showRemove) {
+                        TextButton(
+                            onClick = onRemove,
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text(stringResource(R.string.shadowRemove))
+                        }
+                    }
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.colorizeCancel))
+                    }
+                    Button(onClick = onApply) {
+                        Text(stringResource(R.string.apply))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ShadowEditorControls(
+    adjustments: AdjustmentState,
+    presets: List<ShadowUiPreset>,
+    renderPreview: (suspend (ColorizerStyle) -> Bitmap?)?
+) {
+    var selectedControlOrdinal by rememberSaveable { mutableIntStateOf(ShadowControl.BLUR.ordinal) }
+    var colorSheetOpen by rememberSaveable { mutableStateOf(false) }
+    val selectedControl = ShadowControl.entries.getOrElse(selectedControlOrdinal) { ShadowControl.BLUR }
+    val selectedPreset = presets.indexOfFirst {
+        abs(adjustments.shadowBlur - it.blur) < 0.01f &&
+        abs(adjustments.shadowDistance - it.distance) < 0.01f &&
+            abs(adjustments.shadowOpacity - it.opacity) < 0.001f &&
+            adjustments.shadowAllDirections == it.allDirections
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = stringResource(R.string.shadowPresets),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            presets.forEachIndexed { index, preset ->
+                FilterChip(
+                    selected = selectedPreset == index,
+                    onClick = {
+                        adjustments.shadowBlur = preset.blur
+                        adjustments.shadowDistance = preset.distance
+                        adjustments.shadowOpacity = preset.opacity
+                        adjustments.shadowAllDirections = preset.allDirections
+                    },
+                    label = { Text(preset.label) }
+                )
+            }
+        }
+        Text(
+            text = stringResource(R.string.shadowFineTune),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ShadowControl.entries.forEach { control ->
+                FilterChip(
+                    selected = selectedControl == control,
+                    onClick = { selectedControlOrdinal = control.ordinal },
+                    label = {
+                        Text(
+                            stringResource(
+                                when (control) {
+                                    ShadowControl.BLUR -> R.string.shadowBlur
+                                    ShadowControl.DISTANCE -> R.string.shadowDistance
+                                    ShadowControl.DIRECTION -> R.string.shadowDirection
+                                    ShadowControl.OPACITY -> R.string.shadowOpacity
+                                }
+                            )
+                        )
+                    }
+                )
+            }
+        }
+        when (selectedControl) {
+            ShadowControl.BLUR -> LabeledSlider(
+                label = stringResource(R.string.shadowBlur),
+                value = adjustments.shadowBlur,
+                onValueChange = { adjustments.shadowBlur = it },
+                valueRange = 0f..32f,
+                ruler = pixelRuler()
+            )
+            ShadowControl.DISTANCE -> LabeledSlider(
+                label = stringResource(R.string.shadowDistance),
+                value = adjustments.shadowDistance,
+                onValueChange = { adjustments.shadowDistance = it },
+                valueRange = 0f..32f,
+                ruler = pixelRuler()
+            )
+            ShadowControl.DIRECTION -> Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                SegmentedRow {
+                    SegmentCell(
+                        label = stringResource(R.string.shadowDirectional),
+                        selected = !adjustments.shadowAllDirections,
+                        modifier = Modifier.weight(1f),
+                        onClick = { adjustments.shadowAllDirections = false }
+                    )
+                    SegmentCell(
+                        label = stringResource(R.string.shadowAllDirections),
+                        selected = adjustments.shadowAllDirections,
+                        modifier = Modifier.weight(1f),
+                        onClick = { adjustments.shadowAllDirections = true }
+                    )
+                }
+                if (!adjustments.shadowAllDirections) {
+                    AngleDial(
+                        angle = adjustments.shadowAngle,
+                        contentDescription = stringResource(R.string.shadowDirection),
+                        onAngleChange = { adjustments.shadowAngle = it },
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    )
+                }
+            }
+            ShadowControl.OPACITY -> LabeledSlider(
+                label = stringResource(R.string.shadowOpacity),
+                value = adjustments.shadowOpacity,
+                onValueChange = { adjustments.shadowOpacity = it },
+                valueRange = 0f..1f,
+                ruler = percentRuler()
+            )
+        }
+        val shadowStyle = adjustments.shadowStyle()
+        ColorStyleCard(
+            label = stringResource(R.string.shadowColor),
+            style = shadowStyle,
+            onClick = { colorSheetOpen = true }
+        )
+    }
+
+    if (colorSheetOpen) {
+        ColorStyleSheet(
+            title = stringResource(R.string.shadowColor),
+            initialStyle = adjustments.shadowStyle(),
+            sampleBitmap = null,
+            showSingleColorEffects = false,
+            renderPreview = renderPreview,
+            onDismiss = { colorSheetOpen = false },
+            onApply = {
+                adjustments.applyShadowStyle(it)
+                colorSheetOpen = false
+            }
+        )
+    }
+}
+
+private fun AdjustmentState.shadowSettings() = ShadowSettings(
+    enabled = shadowEnabled,
+    blur = shadowBlur,
+    distance = shadowDistance,
+    angle = shadowAngle,
+    allDirections = shadowAllDirections,
+    style = shadowStyle(),
+    opacity = shadowOpacity
+)
+
+private fun ShadowSettings.applyTo(adjustments: AdjustmentState) {
+    adjustments.shadowEnabled = enabled
+    adjustments.shadowBlur = blur
+    adjustments.shadowDistance = distance
+    adjustments.shadowAngle = angle
+    adjustments.shadowAllDirections = allDirections
+    adjustments.applyShadowStyle(style)
+    adjustments.shadowOpacity = opacity
 }
 
 @Composable

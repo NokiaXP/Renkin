@@ -27,15 +27,16 @@ import kotlinx.coroutines.sync.withLock
  * editor) build these the same way, so the wiring lives here instead of twice.
  */
 internal data class ModifierPreviews(
-    /** The icon as the colourize step sees it: no scale, offset, shape or outline yet. */
+    /** The icon as the colourize step sees it: no scale, offset, shape, outline or shadow yet. */
     val colorizeBase: Bitmap?,
     /** Current modifier stack rendered from an unclipped zero-offset canvas for auto-centering. */
     val positionBase: suspend () -> Bitmap?,
-    /** Remove-background output before scale, position, shape and outline alter its coordinates. */
+    /** Remove-background output before later geometry and silhouette treatments alter it. */
     val backgroundBrush: suspend () -> Bitmap?,
     val colorize: suspend (ColorizerStyle) -> Bitmap?,
     val shape: suspend (ColorizerStyle) -> Bitmap?,
     val outline: suspend (ColorizerStyle) -> Bitmap?,
+    val shadow: suspend (ColorizerStyle) -> Bitmap?,
     /** Current icon rendered with a reusable preset substituted into its source-specific options. */
     val preset: suspend (ModifierPresetPayload) -> Bitmap?,
     /** Invalidates row previews when the current icon/options change. */
@@ -81,6 +82,7 @@ internal fun rememberModifierPreviews(
         iconOffsetY = 0f,
         iconShape = IconShape.NONE,
         outlineMode = OutlineMode.NONE,
+        shadowEnabled = false,
         outlineEraseMask = null,
         backgroundBrushOperations = emptyList()
     )
@@ -107,6 +109,7 @@ internal fun rememberModifierPreviews(
                         iconOffsetY = 0f,
                         iconShape = IconShape.NONE,
                         outlineMode = OutlineMode.NONE,
+                        shadowEnabled = false,
                         outlineEraseMask = null
                     )
                 )
@@ -125,6 +128,15 @@ internal fun rememberModifierPreviews(
                             ?: OutlineMode.ADD,
                         outlineColor = style.firstColor,
                         outlineStyle = style
+                    )
+                )
+            },
+            shadow = { style ->
+                currentRender(
+                    currentOptions.copy(
+                        shadowEnabled = true,
+                        shadowColor = style.firstColor,
+                        shadowStyle = style
                     )
                 )
             },
@@ -233,7 +245,15 @@ internal fun GenerationOptions.withModifierAdjustments(
         gradientPositions = adjustments.outlineGradientPositions,
         gradientAngle = adjustments.outlineGradientAngle
     ),
-    outlineEraseMask = outlineEraseMask
+    outlineEraseMask = outlineEraseMask,
+    shadowEnabled = adjustments.shadowEnabled,
+    shadowBlur = adjustments.shadowBlur,
+    shadowDistance = adjustments.shadowDistance,
+    shadowAngle = adjustments.shadowAngle,
+    shadowAllDirections = adjustments.shadowAllDirections,
+    shadowColor = adjustments.shadowColor.toArgb(),
+    shadowStyle = adjustments.shadowStyle(),
+    shadowOpacity = adjustments.shadowOpacity
 )
 
 /** The options with [style] substituted for the colourize settings. */
