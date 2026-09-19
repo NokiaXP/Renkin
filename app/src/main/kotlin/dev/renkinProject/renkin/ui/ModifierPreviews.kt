@@ -135,7 +135,6 @@ internal fun rememberModifierPreviews(
                 currentRender(
                     currentOptions.copy(
                         shadowEnabled = true,
-                        shadowColor = style.firstColor,
                         shadowStyle = style
                     )
                 )
@@ -222,14 +221,7 @@ internal fun GenerationOptions.withModifierAdjustments(
     // Only the plate: bgColor also carries the Material You variant's background, which is a
     // two-tone scheme colour and must not inherit the shape's gradient.
     backgroundStyle = if (adjustments.iconShape != IconShape.NONE && !adjustments.shapeCrop) {
-        ColorizerStyle(
-            mode = adjustments.shapeColorizerMode,
-            gradientType = adjustments.shapeGradientType,
-            firstColor = adjustments.shapeColor.toArgb(),
-            gradientStops = adjustments.shapeGradientColors,
-            gradientPositions = adjustments.shapeGradientPositions,
-            gradientAngle = adjustments.shapeGradientAngle
-        )
+        adjustments.shapeStyle()
     } else {
         // No plate: whatever the caller set (the Material You variant's own fill) stands.
         backgroundStyle
@@ -237,21 +229,13 @@ internal fun GenerationOptions.withModifierAdjustments(
     outlineMode = adjustments.outlineMode,
     outlineWidth = adjustments.outlineWidth,
     outlineColor = adjustments.outlineColor.toArgb(),
-    outlineStyle = ColorizerStyle(
-        mode = adjustments.outlineColorizerMode,
-        gradientType = adjustments.outlineGradientType,
-        firstColor = adjustments.outlineColor.toArgb(),
-        gradientStops = adjustments.outlineGradientColors,
-        gradientPositions = adjustments.outlineGradientPositions,
-        gradientAngle = adjustments.outlineGradientAngle
-    ),
+    outlineStyle = adjustments.outlineStyle(),
     outlineEraseMask = outlineEraseMask,
     shadowEnabled = adjustments.shadowEnabled,
     shadowBlur = adjustments.shadowBlur,
     shadowDistance = adjustments.shadowDistance,
     shadowAngle = adjustments.shadowAngle,
     shadowAllDirections = adjustments.shadowAllDirections,
-    shadowColor = adjustments.shadowColor.toArgb(),
     shadowStyle = adjustments.shadowStyle(),
     shadowOpacity = adjustments.shadowOpacity
 )

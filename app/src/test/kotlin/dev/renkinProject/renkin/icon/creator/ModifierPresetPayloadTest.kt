@@ -42,7 +42,8 @@ class ModifierPresetPayloadTest {
             effect = ModifierPresetEffect(ImageEdit.COLORIZE, 1.5f, 3f, true, 0.2f, gradient),
             iconScale = 0.72f,
             shape = ModifierPresetShape(IconShape.PEBBLE, false, 1.2f, gradient),
-            outline = ModifierPresetOutline(OutlineMode.ADD, 9f, gradient)
+            outline = ModifierPresetOutline(OutlineMode.ADD, 9f, gradient),
+            shadow = ModifierPresetShadow(true, 20f, 5f, 270f, true, gradient, 0.6f)
         )
 
         assertEquals(original, decodeModifierPreset(encodeModifierPreset(original)))
@@ -94,5 +95,25 @@ class ModifierPresetPayloadTest {
         assertEquals(OutlineMode.RECOLOR, result.outlineMode)
         assertEquals(0.2f, result.iconOffsetX)
         assertEquals(-0.1f, result.iconOffsetY)
+    }
+
+    @Test
+    fun decode_shadowWithoutStyleFallsBackToBlackAndDefaults() {
+        val shadow = checkNotNull(
+            decodeModifierPreset("v=1\nshadow=1\nshadow.enabled=true")?.shadow
+        )
+
+        assertEquals(
+            ModifierPresetShadow(
+                enabled = true,
+                blur = SHADOW_BLUR_DEFAULT,
+                distance = SHADOW_DISTANCE_DEFAULT,
+                angle = SHADOW_ANGLE_DEFAULT,
+                allDirections = false,
+                style = ColorizerStyle(firstColor = Color.BLACK),
+                opacity = SHADOW_OPACITY_DEFAULT
+            ),
+            shadow
+        )
     }
 }

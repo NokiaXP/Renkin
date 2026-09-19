@@ -15,6 +15,10 @@ const val SHADOW_DISTANCE_MIN = 0f
 const val SHADOW_DISTANCE_MAX = 32f
 const val SHADOW_OPACITY_MIN = 0f
 const val SHADOW_OPACITY_MAX = 1f
+const val SHADOW_BLUR_DEFAULT = 12f
+const val SHADOW_DISTANCE_DEFAULT = 7f
+const val SHADOW_ANGLE_DEFAULT = 135f
+const val SHADOW_OPACITY_DEFAULT = 0.35f
 
 internal object IconShadow {
     fun apply(
@@ -23,8 +27,7 @@ internal object IconShadow {
         distance: Float,
         angle: Float,
         allDirections: Boolean,
-        color: Int,
-        style: ColorizerStyle?,
+        style: ColorizerStyle,
         opacity: Float
     ): Bitmap {
         if (source.width <= 0 || source.height <= 0 || opacity <= 0f) return source
@@ -54,7 +57,6 @@ internal object IconShadow {
         }
         val shadowMask = maskSource.extractAlpha(maskPaint, alphaOffset)
         if (maskSource !== source) maskSource.recycle()
-        val effectiveStyle = style ?: ColorizerStyle(firstColor = color)
         val positionedMask = newArgbBitmap(source.width, source.height) { canvas ->
             canvas.drawBitmap(
                 shadowMask,
@@ -67,15 +69,15 @@ internal object IconShadow {
         }
         val colorLayer = newArgbBitmap(source.width, source.height) { canvas ->
             val fill = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
-                this.color = effectiveStyle.firstColor
-                shader = if (effectiveStyle.mode == ColorizerMode.GRADIENT) {
+                this.color = style.firstColor
+                shader = if (style.mode == ColorizerMode.GRADIENT) {
                     buildColorizerShader(
-                        effectiveStyle.allGradientColors,
-                        effectiveStyle.gradientType,
-                        effectiveStyle.gradientAngle,
+                        style.allGradientColors,
+                        style.gradientType,
+                        style.gradientAngle,
                         source.width,
                         source.height,
-                        effectiveStyle.gradientPositions
+                        style.gradientPositions
                     )
                 } else null
             }

@@ -155,13 +155,12 @@ data class GenerationOptions(
     // A shadow follows the final silhouette. It is intentionally per-icon: adaptive masks clip
     // outside effects, so enabling it produces a faithful flattened fallback for that icon.
     val shadowEnabled: Boolean = false,
-    val shadowBlur: Float = 12f,
-    val shadowDistance: Float = 7f,
-    val shadowAngle: Float = 135f,
+    val shadowBlur: Float = SHADOW_BLUR_DEFAULT,
+    val shadowDistance: Float = SHADOW_DISTANCE_DEFAULT,
+    val shadowAngle: Float = SHADOW_ANGLE_DEFAULT,
     val shadowAllDirections: Boolean = false,
-    val shadowColor: Int = android.graphics.Color.BLACK,
-    val shadowStyle: ColorizerStyle? = null,
-    val shadowOpacity: Float = 0.35f,
+    val shadowStyle: ColorizerStyle = ColorizerStyle(firstColor = android.graphics.Color.BLACK),
+    val shadowOpacity: Float = SHADOW_OPACITY_DEFAULT,
     // Ordered hand corrections to background removal. Session-only, like the outline eraser.
     val backgroundBrushOperations: List<BackgroundBrushOperation> = emptyList(),
     // Text-icon options: the string rendered for TextType.CUSTOM (empty falls back to the app
@@ -268,7 +267,8 @@ fun globalModifierOptions(preferences: Preferences): GenerationOptions {
     ).copy(
         flat = preferences.getBooleanValue(GlobalColorizeFlatKey),
         lighten = preferences.getBooleanValue(GlobalColorizeLightenKey) &&
-            !preferences.getBooleanValue(GlobalColorizeFlatKey),
+            !preferences.getBooleanValue(GlobalColorizeFlatKey) &&
+            !preferences.getBooleanValue(GlobalColorizeMonochromeKey),
         monochrome = preferences.getBooleanValue(GlobalColorizeMonochromeKey),
         inverse = preferences.getBooleanValue(GlobalColorizeInverseKey)
     )
@@ -355,6 +355,16 @@ fun GenerationOptions.backgroundShader(width: Int, height: Int): android.graphic
     )
 }
 
+// Colorize blend for bitmap icons: SRC_IN replaces the icon's colours with the picked one (flat
+// fill), SCREEN lightens toward it, MULTIPLY tints them. Vectors recolour flat unless baked.
+internal val GenerationOptions.colorizeBlendMode: android.graphics.PorterDuff.Mode
+    get() = when {
+        colorizeMonochrome -> android.graphics.PorterDuff.Mode.MULTIPLY
+        colorizeFlat -> android.graphics.PorterDuff.Mode.SRC_IN
+        colorizeLighten -> android.graphics.PorterDuff.Mode.SCREEN
+        else -> android.graphics.PorterDuff.Mode.MULTIPLY
+    }
+
 fun GenerationOptions.hasVisibleModifierEffect(): Boolean =
     primaryImageEdit != ImageEdit.NONE || iconScale != 1f ||
         iconShape != IconShape.NONE || outlineMode != OutlineMode.NONE || hasVisibleShadow() ||
@@ -366,11 +376,10 @@ fun GenerationOptions.hasVisibleShadow(): Boolean =
         (shadowBlur > 0f || shadowDistance > 0f)
 
 private fun GenerationOptions.shadowHasVisibleColor(): Boolean {
-    val style = shadowStyle ?: return android.graphics.Color.alpha(shadowColor) > 0
-    val colors = if (style.mode == ColorizerMode.GRADIENT) {
-        style.allGradientColors
+    val colors = if (shadowStyle.mode == ColorizerMode.GRADIENT) {
+        shadowStyle.allGradientColors
     } else {
-        listOf(style.firstColor)
+        listOf(shadowStyle.firstColor)
     }
     return colors.any { android.graphics.Color.alpha(it) > 0 }
 }

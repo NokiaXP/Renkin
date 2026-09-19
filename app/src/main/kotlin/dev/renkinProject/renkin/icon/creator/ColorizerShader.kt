@@ -225,26 +225,21 @@ fun colorizeSampleBitmap(
     // Monochrome ignores the picked colour entirely, matching colorizeImage().
     if (style.monochrome) return monochromeBitmap(source, style.inverse)
 
-    val effectiveColor = if (style.inverse) invertArgb(style.firstColor) else style.firstColor
+    // Tint with the picked colour, then invert the whole result — the generator's bitmap path. The
+    // vector path recolours to the inverted colour directly, which lands on the same pixels.
     val result = if (style.lighten && !style.flat) {
-        screenColorizeBitmap(source, effectiveColor)
+        screenColorizeBitmap(source, style.firstColor)
     } else {
-        Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
-    }
-    // Solid replaces the artwork, while the default Multiply darkens/tints it.
-    val blend = when {
-        style.flat -> PorterDuff.Mode.SRC_IN
-        else -> PorterDuff.Mode.MULTIPLY
-    }
-    if (!style.lighten || style.flat) {
-        Canvas(result).drawBitmap(
-            source,
-            0f,
-            0f,
-            Paint().apply {
-                colorFilter = PorterDuffColorFilter(effectiveColor, blend)
-            }
-        )
+        // Solid replaces the artwork, while the default Multiply darkens/tints it.
+        val blend = if (style.flat) PorterDuff.Mode.SRC_IN else PorterDuff.Mode.MULTIPLY
+        Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888).also {
+            Canvas(it).drawBitmap(
+                source,
+                0f,
+                0f,
+                Paint().apply { colorFilter = PorterDuffColorFilter(style.firstColor, blend) }
+            )
+        }
     }
     return if (style.inverse) invertBitmapColors(result) else result
 }

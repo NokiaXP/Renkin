@@ -106,6 +106,19 @@ import dev.renkinProject.renkin.drawable.MaterialYouPackEditState
 import dev.renkinProject.renkin.icon.creator.encodeColorizerStyle
 import dev.renkinProject.renkin.icon.creator.encode
 import dev.renkinProject.renkin.icon.creator.GradientType
+import dev.renkinProject.renkin.icon.creator.ModifierPresetPayload
+import dev.renkinProject.renkin.icon.creator.SHADOW_ANGLE_DEFAULT
+import dev.renkinProject.renkin.icon.creator.SHADOW_BLUR_DEFAULT
+import dev.renkinProject.renkin.icon.creator.SHADOW_BLUR_MAX
+import dev.renkinProject.renkin.icon.creator.SHADOW_BLUR_MIN
+import dev.renkinProject.renkin.icon.creator.SHADOW_DISTANCE_DEFAULT
+import dev.renkinProject.renkin.icon.creator.SHADOW_DISTANCE_MAX
+import dev.renkinProject.renkin.icon.creator.SHADOW_DISTANCE_MIN
+import dev.renkinProject.renkin.icon.creator.SHADOW_OPACITY_DEFAULT
+import dev.renkinProject.renkin.icon.creator.SHADOW_OPACITY_MAX
+import dev.renkinProject.renkin.icon.creator.SHADOW_OPACITY_MIN
+import dev.renkinProject.renkin.icon.creator.decodeModifierPreset
+import dev.renkinProject.renkin.icon.creator.encodeModifierPreset
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -167,9 +180,9 @@ internal class AdjustmentState {
     var outlineGradientPositions by mutableStateOf(emptyList<Float>())
     var outlineGradientAngle by mutableFloatStateOf(0f)
     var shadowEnabled by mutableStateOf(false)
-    var shadowBlur by mutableFloatStateOf(12f)
-    var shadowDistance by mutableFloatStateOf(7f)
-    var shadowAngle by mutableFloatStateOf(135f)
+    var shadowBlur by mutableFloatStateOf(SHADOW_BLUR_DEFAULT)
+    var shadowDistance by mutableFloatStateOf(SHADOW_DISTANCE_DEFAULT)
+    var shadowAngle by mutableFloatStateOf(SHADOW_ANGLE_DEFAULT)
     var shadowAllDirections by mutableStateOf(false)
     var shadowColor by mutableStateOf(Color.Black)
     var shadowColorizerMode by mutableStateOf(ColorizerMode.SINGLE_COLOR)
@@ -177,7 +190,7 @@ internal class AdjustmentState {
     var shadowGradientColors by mutableStateOf(listOf(android.graphics.Color.BLACK))
     var shadowGradientPositions by mutableStateOf(emptyList<Float>())
     var shadowGradientAngle by mutableFloatStateOf(0f)
-    var shadowOpacity by mutableFloatStateOf(0.35f)
+    var shadowOpacity by mutableFloatStateOf(SHADOW_OPACITY_DEFAULT)
     // Eraser strokes masking where the outline must not apply. Deliberately NOT in [Saver]:
     // they're transient per-app geometry, and holding them out keeps the saver list flat.
     var eraseStrokes by mutableStateOf<List<BrushStroke>>(emptyList())
@@ -651,19 +664,7 @@ internal fun ModifierTab(
                                 }
 
                                 ImageEdit.COLORIZE -> {
-                                    val colorizerStyle = ColorizerStyle(
-                                        mode = adjustments.colorizerMode,
-                                        gradientType = adjustments.colorizerGradientType,
-                                        firstColor = iconColor.toArgb(),
-                                        gradientStops = adjustments.colorizerGradientColors,
-                                        gradientPositions =
-                                            adjustments.colorizerGradientPositions,
-                                        gradientAngle = adjustments.colorizerGradientAngle,
-                                        flat = adjustments.colorizeFlat,
-                                        lighten = adjustments.colorizeLighten,
-                                        monochrome = adjustments.colorizeMonochrome,
-                                        inverse = adjustments.colorizeInverse
-                                    )
+                                    val colorizerStyle = adjustments.colorizerStyleWith(iconColor)
                                     ColorStyleCard(
                                         label = stringResource(R.string.colorize),
                                         style = colorizerStyle,
@@ -677,20 +678,8 @@ internal fun ModifierTab(
                                             renderPreview = previews?.colorize,
                                             onDismiss = { colorizeSheetOpen = false },
                                             onApply = { style ->
-                                                adjustments.colorizerMode = style.mode
-                                                adjustments.colorizerGradientType =
-                                                    style.gradientType
+                                                adjustments.applyColorizerStyle(style)
                                                 onColorChange(Color(style.firstColor))
-                                                adjustments.colorizerGradientColors =
-                                                    style.gradientStops
-                                                adjustments.colorizerGradientPositions =
-                                                    style.gradientPositions
-                                                adjustments.colorizerGradientAngle =
-                                                    style.gradientAngle
-                                                adjustments.colorizeFlat = style.flat
-                                                adjustments.colorizeLighten = style.lighten
-                                                adjustments.colorizeMonochrome = style.monochrome
-                                                adjustments.colorizeInverse = style.inverse
                                                 colorizeSheetOpen = false
                                             }
                                         )
@@ -1004,14 +993,7 @@ private fun IconShapeSection(
                     ruler = percentRuler()
                 )
                 if (!adjustments.shapeCrop) {
-                    val shapeStyle = ColorizerStyle(
-                        mode = adjustments.shapeColorizerMode,
-                        gradientType = adjustments.shapeGradientType,
-                        firstColor = adjustments.shapeColor.toArgb(),
-                        gradientStops = adjustments.shapeGradientColors,
-                        gradientPositions = adjustments.shapeGradientPositions,
-                        gradientAngle = adjustments.shapeGradientAngle
-                    )
+                    val shapeStyle = adjustments.shapeStyle()
                     ColorStyleCard(
                         label = stringResource(R.string.shapeColor),
                         style = shapeStyle,
@@ -1026,12 +1008,7 @@ private fun IconShapeSection(
                             showSingleColorEffects = false,
                             onDismiss = { colorSheetOpen = false },
                             onApply = { style ->
-                                adjustments.shapeColorizerMode = style.mode
-                                adjustments.shapeGradientType = style.gradientType
-                                adjustments.shapeColor = Color(style.firstColor)
-                                adjustments.shapeGradientColors = style.gradientStops
-                                adjustments.shapeGradientPositions = style.gradientPositions
-                                adjustments.shapeGradientAngle = style.gradientAngle
+                                adjustments.applyShapeStyle(style)
                                 colorSheetOpen = false
                             }
                         )
@@ -1087,14 +1064,7 @@ private fun OutlineSection(
                         ruler = pixelRuler()
                     )
                 }
-                val outlineStyle = ColorizerStyle(
-                    mode = adjustments.outlineColorizerMode,
-                    gradientType = adjustments.outlineGradientType,
-                    firstColor = adjustments.outlineColor.toArgb(),
-                    gradientStops = adjustments.outlineGradientColors,
-                    gradientPositions = adjustments.outlineGradientPositions,
-                    gradientAngle = adjustments.outlineGradientAngle
-                )
+                val outlineStyle = adjustments.outlineStyle()
                 ColorStyleCard(
                     label = stringResource(R.string.outlineColor),
                     style = outlineStyle,
@@ -1109,12 +1079,7 @@ private fun OutlineSection(
                         renderPreview = renderPreview,
                         onDismiss = { colorSheetOpen = false },
                         onApply = { style ->
-                            adjustments.outlineColorizerMode = style.mode
-                            adjustments.outlineGradientType = style.gradientType
-                            adjustments.outlineColor = Color(style.firstColor)
-                            adjustments.outlineGradientColors = style.gradientStops
-                            adjustments.outlineGradientPositions = style.gradientPositions
-                            adjustments.outlineGradientAngle = style.gradientAngle
+                            adjustments.applyOutlineStyle(style)
                             colorSheetOpen = false
                         }
                     )
@@ -1147,16 +1112,6 @@ private data class ShadowUiPreset(
     val allDirections: Boolean = false
 )
 
-private data class ShadowSettings(
-    val enabled: Boolean,
-    val blur: Float,
-    val distance: Float,
-    val angle: Float,
-    val allDirections: Boolean,
-    val style: ColorizerStyle,
-    val opacity: Float
-)
-
 private enum class ShadowControl { BLUR, DISTANCE, DIRECTION, OPACITY }
 
 @Composable
@@ -1166,8 +1121,12 @@ private fun ShadowSection(
     previewGenerating: Boolean,
     renderPreview: (suspend (ColorizerStyle) -> Bitmap?)?
 ) {
-    var editorOpen by remember { mutableStateOf(false) }
-    var originalSettings by remember { mutableStateOf<ShadowSettings?>(null) }
+    var editorOpen by rememberSaveable { mutableStateOf(false) }
+    // The Cancel snapshot is kept encoded so it survives process death alongside the open editor.
+    var originalShadowEncoded by rememberSaveable { mutableStateOf<String?>(null) }
+    val originalShadow = remember(originalShadowEncoded) {
+        originalShadowEncoded?.let(::decodeModifierPreset)?.shadow
+    }
     val adaptiveLayoutInfo = LocalAdaptiveLayoutInfo.current
     val hasPersistentPreview = horizontalPaneLayout(
         availableWidth = adaptiveLayoutInfo.windowWidth,
@@ -1178,7 +1137,8 @@ private fun ShadowSection(
     ) != null
 
     fun openEditor() {
-        originalSettings = adjustments.shadowSettings()
+        originalShadowEncoded =
+            encodeModifierPreset(ModifierPresetPayload(shadow = adjustments.shadowPreset()))
         adjustments.shadowEnabled = true
         editorOpen = true
     }
@@ -1259,19 +1219,19 @@ private fun ShadowSection(
             preview = preview,
             previewGenerating = previewGenerating,
             renderPreview = renderPreview,
-            showRemove = originalSettings?.enabled == true,
+            showRemove = originalShadow?.enabled == true,
             onDismiss = {
-                originalSettings?.applyTo(adjustments)
-                originalSettings = null
+                originalShadow?.let(adjustments::applyShadowPreset)
+                originalShadowEncoded = null
                 editorOpen = false
             },
             onApply = {
-                originalSettings = null
+                originalShadowEncoded = null
                 editorOpen = false
             },
             onRemove = {
                 adjustments.shadowEnabled = false
-                originalSettings = null
+                originalShadowEncoded = null
                 editorOpen = false
             }
         )
@@ -1460,14 +1420,14 @@ private fun ShadowEditorControls(
                 label = stringResource(R.string.shadowBlur),
                 value = adjustments.shadowBlur,
                 onValueChange = { adjustments.shadowBlur = it },
-                valueRange = 0f..32f,
+                valueRange = SHADOW_BLUR_MIN..SHADOW_BLUR_MAX,
                 ruler = pixelRuler()
             )
             ShadowControl.DISTANCE -> LabeledSlider(
                 label = stringResource(R.string.shadowDistance),
                 value = adjustments.shadowDistance,
                 onValueChange = { adjustments.shadowDistance = it },
-                valueRange = 0f..32f,
+                valueRange = SHADOW_DISTANCE_MIN..SHADOW_DISTANCE_MAX,
                 ruler = pixelRuler()
             )
             ShadowControl.DIRECTION -> Column(
@@ -1500,7 +1460,7 @@ private fun ShadowEditorControls(
                 label = stringResource(R.string.shadowOpacity),
                 value = adjustments.shadowOpacity,
                 onValueChange = { adjustments.shadowOpacity = it },
-                valueRange = 0f..1f,
+                valueRange = SHADOW_OPACITY_MIN..SHADOW_OPACITY_MAX,
                 ruler = percentRuler()
             )
         }
@@ -1526,26 +1486,6 @@ private fun ShadowEditorControls(
             }
         )
     }
-}
-
-private fun AdjustmentState.shadowSettings() = ShadowSettings(
-    enabled = shadowEnabled,
-    blur = shadowBlur,
-    distance = shadowDistance,
-    angle = shadowAngle,
-    allDirections = shadowAllDirections,
-    style = shadowStyle(),
-    opacity = shadowOpacity
-)
-
-private fun ShadowSettings.applyTo(adjustments: AdjustmentState) {
-    adjustments.shadowEnabled = enabled
-    adjustments.shadowBlur = blur
-    adjustments.shadowDistance = distance
-    adjustments.shadowAngle = angle
-    adjustments.shadowAllDirections = allDirections
-    adjustments.applyShadowStyle(style)
-    adjustments.shadowOpacity = opacity
 }
 
 @Composable

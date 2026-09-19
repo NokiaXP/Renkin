@@ -99,7 +99,6 @@ internal class IconAdjustmentPipeline(
                 distance = options.shadowDistance,
                 angle = options.shadowAngle,
                 allDirections = options.shadowAllDirections,
-                color = options.shadowColor,
                 style = options.shadowStyle,
                 opacity = options.shadowOpacity
             )

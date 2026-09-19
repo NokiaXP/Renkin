@@ -70,17 +70,7 @@ internal fun captureModifierPreset(
             style = adjustments.outlineStyle()
         )
     } else null,
-    shadow = if (ModifierPresetGroup.SHADOW in groups) {
-        ModifierPresetShadow(
-            enabled = adjustments.shadowEnabled,
-            blur = adjustments.shadowBlur,
-            distance = adjustments.shadowDistance,
-            angle = adjustments.shadowAngle,
-            allDirections = adjustments.shadowAllDirections,
-            style = adjustments.shadowStyle(),
-            opacity = adjustments.shadowOpacity
-        )
-    } else null
+    shadow = if (ModifierPresetGroup.SHADOW in groups) adjustments.shadowPreset() else null
 )
 
 /**
@@ -116,15 +106,7 @@ internal fun applyModifierPreset(
         adjustments.outlineWidth = outline.width
         adjustments.applyOutlineStyle(outline.style)
     }
-    payload.shadow?.let { shadow ->
-        adjustments.shadowEnabled = shadow.enabled
-        adjustments.shadowBlur = shadow.blur
-        adjustments.shadowDistance = shadow.distance
-        adjustments.shadowAngle = shadow.angle
-        adjustments.shadowAllDirections = shadow.allDirections
-        adjustments.applyShadowStyle(shadow.style)
-        adjustments.shadowOpacity = shadow.opacity
-    }
+    payload.shadow?.let(adjustments::applyShadowPreset)
     return application
 }
 
@@ -232,6 +214,26 @@ internal fun AdjustmentState.applyShadowStyle(style: ColorizerStyle) {
     shadowGradientColors = style.gradientStops
     shadowGradientPositions = style.gradientPositions
     shadowGradientAngle = style.gradientAngle
+}
+
+internal fun AdjustmentState.shadowPreset(): ModifierPresetShadow = ModifierPresetShadow(
+    enabled = shadowEnabled,
+    blur = shadowBlur,
+    distance = shadowDistance,
+    angle = shadowAngle,
+    allDirections = shadowAllDirections,
+    style = shadowStyle(),
+    opacity = shadowOpacity
+)
+
+internal fun AdjustmentState.applyShadowPreset(shadow: ModifierPresetShadow) {
+    shadowEnabled = shadow.enabled
+    shadowBlur = shadow.blur
+    shadowDistance = shadow.distance
+    shadowAngle = shadow.angle
+    shadowAllDirections = shadow.allDirections
+    applyShadowStyle(shadow.style)
+    shadowOpacity = shadow.opacity
 }
 
 /**
