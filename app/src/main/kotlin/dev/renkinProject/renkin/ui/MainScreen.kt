@@ -35,7 +35,6 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Lock
@@ -525,11 +524,9 @@ fun MainColumn(iconPacks: List<IconPack>) {
 
     // The replace-everything confirmation for a picked full-backup file. Hosted here (not in
     // Settings) so imports started from the profile switcher confirm too.
-    if (viewModel.pendingBackupImport != null) {
-        ConfirmDialog(
-            title = stringResource(R.string.importBackupTitle),
-            text = stringResource(R.string.importBackupText),
-            icon = Icons.Filled.Restore,
+    viewModel.pendingBackupImport?.let { pending ->
+        BackupRestorePreviewDialog(
+            preview = pending.preview,
             onConfirm = { viewModel.confirmBackupImport() },
             onDismiss = { viewModel.cancelBackupImport() }
         )

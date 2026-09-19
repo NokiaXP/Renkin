@@ -1331,11 +1331,16 @@ class MainViewModel @Inject constructor(
 
     // A picked full-backup file waiting for the "replace everything?" confirmation.
     // (Profile files import right away — they only add a new profile.)
-    var pendingBackupImport by mutableStateOf<Uri?>(null)
+    data class PendingBackupImport(
+        val uri: Uri,
+        val preview: BackupManager.BackupPreview
+    )
+
+    var pendingBackupImport by mutableStateOf<PendingBackupImport?>(null)
         private set
 
     fun confirmBackupImport() {
-        val uri = pendingBackupImport ?: return
+        val uri = pendingBackupImport?.uri ?: return
         pendingBackupImport = null
         runBackupOp(R.string.backupImportFailed) { performImport(uri) }
     }
@@ -1347,8 +1352,12 @@ class MainViewModel @Inject constructor(
      * a confirmation ([pendingBackupImport]); shared profiles are additive and import now.
      */
     fun importFile(uri: Uri) = runBackupOp(R.string.backupImportFailed) {
-        when (backupManager.peekKind(uri)) {
-            BackupManager.ImportKind.BACKUP -> pendingBackupImport = uri
+        val inspection = backupManager.inspectFile(uri)
+        when (inspection.kind) {
+            BackupManager.ImportKind.BACKUP -> pendingBackupImport = PendingBackupImport(
+                uri = uri,
+                preview = checkNotNull(inspection.backup)
+            )
             BackupManager.ImportKind.PROFILE -> performImport(uri)
         }
     }

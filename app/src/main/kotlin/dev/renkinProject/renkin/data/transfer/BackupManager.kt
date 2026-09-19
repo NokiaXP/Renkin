@@ -88,6 +88,25 @@ class BackupManager(
         val importedProfileId: Long? = null
     )
 
+    data class ImportInspection(
+        val kind: ImportKind,
+        val backup: BackupPreview? = null
+    )
+
+    data class BackupPreview(
+        val appVersion: String,
+        val exportedAt: Long,
+        val profiles: List<ProfilePreview>,
+        val activeWatchRules: Int,
+        val completedWatchRules: Int,
+        val savedStyles: Int,
+        val uploadedImages: Int
+    ) {
+        val iconCount: Int = profiles.sumOf { it.iconCount }
+    }
+
+    data class ProfilePreview(val name: String, val iconCount: Int)
+
     // ---- Export --------------------------------------------------------------------
 
     /** Whether a saved profile references at least one personal Icon Pack Studio export. */
@@ -218,15 +237,32 @@ class BackupManager(
 
     // ---- Import --------------------------------------------------------------------
 
-    /** Reads just enough of the file to tell a full backup from a shared profile. */
-    suspend fun peekKind(uri: Uri): ImportKind = withContext(Dispatchers.IO) {
-        val manifest = openZip(uri).use { zip ->
-            var entry = zip.nextEntry
-            while (entry != null && entry.name != MANIFEST_ENTRY) entry = zip.nextEntry
-            if (entry == null) throw IOException("Not a Renkin file (no manifest)")
-            JSONObject(zip.readEntryText())
-        }
-        kindOf(manifest)
+    /** Fully validates a picked file and builds the summary shown before a destructive restore. */
+    suspend fun inspectFile(uri: Uri): ImportInspection = inspectFile {
+        context.contentResolver.openInputStream(uri) ?: throw IOException("Cannot open $uri for reading")
+    }
+
+    suspend fun inspectFile(open: () -> InputStream): ImportInspection = withContext(Dispatchers.IO) {
+        val archive = readArchive(open)
+        val manifest = archive.manifest
+        val data = archive.data
+        val kind = kindOf(manifest)
+        if (kind == ImportKind.PROFILE) return@withContext ImportInspection(kind)
+        requireValidBackup(data)
+
+        val rules = data.profiles.flatMap { it.watchRules }
+        ImportInspection(
+            kind = kind,
+            backup = BackupPreview(
+                appVersion = manifest.optString("appVersion"),
+                exportedAt = manifest.optLong("exportedAt"),
+                profiles = data.profiles.map { ProfilePreview(it.profile.name, it.icons.size) },
+                activeWatchRules = rules.count { !it.completed },
+                completedWatchRules = rules.count { it.completed },
+                savedStyles = data.colorPresets.size + data.modifierPresets.size,
+                uploadedImages = archive.uploadedImages
+            )
+        )
     }
 
     suspend fun importFile(uri: Uri): ImportResult = importFile {
@@ -235,10 +271,10 @@ class BackupManager(
 
     /** Dispatches on the file's kind: full backups replace, shared profiles add. */
     suspend fun importFile(open: () -> InputStream): ImportResult = withContext(Dispatchers.IO) {
-        val (manifest, data) = readArchive(open)
-        when (kindOf(manifest)) {
-            ImportKind.BACKUP -> restoreBackup(data, open)
-            ImportKind.PROFILE -> importProfile(data)
+        val archive = readArchive(open)
+        when (kindOf(archive.manifest)) {
+            ImportKind.BACKUP -> restoreBackup(archive.data, open)
+            ImportKind.PROFILE -> importProfile(archive.data)
         }
     }
 
@@ -247,21 +283,25 @@ class BackupManager(
     }
 
     suspend fun importBackup(open: () -> InputStream): ImportResult = withContext(Dispatchers.IO) {
-        val (manifest, data) = readArchive(open)
-        if (kindOf(manifest) != ImportKind.BACKUP) throw IOException("Not a full-backup file")
-        restoreBackup(data, open)
+        val archive = readArchive(open)
+        if (kindOf(archive.manifest) != ImportKind.BACKUP) throw IOException("Not a full-backup file")
+        restoreBackup(archive.data, open)
     }
 
     /** Pass 1 of an import: read and fully validate before touching anything on the device. */
-    private fun readArchive(open: () -> InputStream): Pair<JSONObject, BackupData> {
+    private fun readArchive(open: () -> InputStream): ArchiveContents {
         var manifest: JSONObject? = null
         var dataJson: String? = null
+        var uploadedImages = 0
         ZipInputStream(open().buffered()).use { zip ->
             var entry = zip.nextEntry
             while (entry != null) {
                 when (entry.name) {
                     MANIFEST_ENTRY -> manifest = JSONObject(zip.readEntryText())
                     DATA_ENTRY -> dataJson = zip.readEntryText()
+                }
+                if (entry.name.startsWith("$UPLOADS_DIR/") && entry.name.endsWith(".png")) {
+                    uploadedImages++
                 }
                 entry = zip.nextEntry
             }
@@ -271,8 +311,14 @@ class BackupManager(
             throw IOException("File was made by a newer app version")
         }
         val data = BackupCodec.decode(dataJson ?: throw IOException("File has no data entry"))
-        return meta to data
+        return ArchiveContents(meta, data, uploadedImages)
     }
+
+    private data class ArchiveContents(
+        val manifest: JSONObject,
+        val data: BackupData,
+        val uploadedImages: Int
+    )
 
     private fun kindOf(manifest: JSONObject): ImportKind = when (manifest.optString("kind")) {
         KIND_BACKUP -> ImportKind.BACKUP
@@ -281,9 +327,7 @@ class BackupManager(
     }
 
     private suspend fun restoreBackup(data: BackupData, open: () -> InputStream): ImportResult {
-        if (data.profiles.none { it.profile.id == DEFAULT_PROFILE_ID }) {
-            throw IOException("Backup has no default profile")
-        }
+        requireValidBackup(data)
 
         packRepo.replaceEverything(
             data.profiles.map { it.profile },
@@ -350,6 +394,12 @@ class BackupManager(
         }
 
         return ImportResult(ImportKind.BACKUP, data.profiles.size, data.profiles.sumOf { it.icons.size })
+    }
+
+    private fun requireValidBackup(data: BackupData) {
+        if (data.profiles.none { it.profile.id == DEFAULT_PROFILE_ID }) {
+            throw IOException("Backup has no default profile")
+        }
     }
 
     /** A shared profile always lands as a NEW profile — imports never overwrite anything. */
@@ -470,10 +520,6 @@ class BackupManager(
         runCatching {
             appManager.appFilterDrawableName(packPackage, InstalledApplication(packageName, activityName, 0))
         }.getOrNull()
-
-    private fun openZip(uri: Uri): ZipInputStream = ZipInputStream(
-        (context.contentResolver.openInputStream(uri) ?: throw IOException("Cannot open $uri for reading")).buffered()
-    )
 
     private suspend fun restorePrefs(prefs: Map<String, BackupPref>) {
         context.dataStore.edit { store ->

@@ -10,6 +10,7 @@ import dev.renkinProject.renkin.data.PackVerdict
 import dev.renkinProject.renkin.data.Profile
 import dev.renkinProject.renkin.data.RenkinPackDatabase
 import dev.renkinProject.renkin.data.RenkinPackRepository
+import dev.renkinProject.renkin.data.UploadedImageStore
 import dev.renkinProject.renkin.data.watch.AppComponent
 import dev.renkinProject.renkin.data.watch.BaselineInput
 import dev.renkinProject.renkin.data.watch.CandidateInput
@@ -183,6 +184,82 @@ class BackupManagerTest {
             "candidate-hash",
             tgtWatchRepo.getCandidates(suggestion.id).single().iconHash
         )
+    }
+
+    @Test
+    fun inspectBackup_reportsContentsWithoutRestoring() = runBlocking {
+        val packRepo = RenkinPackRepository(srcPackDb)
+        val watchRepo = WatchRepository(srcWatchDb)
+        packRepo.replaceEverything(
+            listOf(
+                Profile(id = DEFAULT_PROFILE_ID, name = "Renkin"),
+                Profile(id = 7L, name = "Light")
+            ),
+            listOf(
+                DbApplication("com.a", "A", false, false, "a", profileId = DEFAULT_PROFILE_ID),
+                DbApplication("com.b", "B", false, false, "b", profileId = 7L),
+                DbApplication("com.c", "C", false, false, "c", profileId = 7L)
+            )
+        )
+        packRepo.saveColorPreset("Blue", "blue")
+        packRepo.saveModifierPreset("Soft", "{}", 1)
+        watchRepo.replaceAllRules(
+            listOf(
+                WatchRuleImport(DEFAULT_PROFILE_ID, true, false, 1L, null, emptyList(), emptyList()),
+                WatchRuleImport(
+                    7L,
+                    false,
+                    true,
+                    2L,
+                    3L,
+                    listOf(AppComponent("com.done", "Done")),
+                    listOf("pack.done"),
+                    suggestions = listOf(
+                        SuggestionImport(
+                            "com.done",
+                            "Done",
+                            3L,
+                            listOf(CandidateInput("pack.done", "done_icon", "hash"))
+                        )
+                    )
+                )
+            )
+        )
+        val existingUploads = UploadedImageStore.list(context).size
+        val upload = UploadedImageStore.directory(context).resolve("preview-test.png")
+        upload.writeBytes(byteArrayOf(1, 2, 3))
+        try {
+            val out = ByteArrayOutputStream()
+            BackupManager(context, packRepo, watchRepo).exportBackup { out }
+
+            val inspection = BackupManager(context, RenkinPackRepository(tgtPackDb), WatchRepository(tgtWatchDb))
+                .inspectFile { ByteArrayInputStream(out.toByteArray()) }
+
+            assertEquals(BackupManager.ImportKind.BACKUP, inspection.kind)
+            val preview = checkNotNull(inspection.backup)
+            assertEquals(listOf("Renkin", "Light"), preview.profiles.map { it.name })
+            assertEquals(listOf(1, 2), preview.profiles.map { it.iconCount })
+            assertEquals(3, preview.iconCount)
+            assertEquals(1, preview.activeWatchRules)
+            assertEquals(1, preview.completedWatchRules)
+            assertEquals(2, preview.savedStyles)
+            assertEquals(existingUploads + 1, preview.uploadedImages)
+
+            assertTrue(RenkinPackRepository(tgtPackDb).profiles().isEmpty())
+            assertTrue(WatchRepository(tgtWatchDb).getAllRules().isEmpty())
+        } finally {
+            upload.delete()
+        }
+    }
+
+    @Test
+    fun inspectBackup_rejectsGarbage() = runBlocking {
+        val result = runCatching {
+            BackupManager(context, RenkinPackRepository(tgtPackDb), WatchRepository(tgtWatchDb))
+                .inspectFile { ByteArrayInputStream("not a backup".toByteArray()) }
+        }
+
+        assertTrue(result.isFailure)
     }
 
     @Test

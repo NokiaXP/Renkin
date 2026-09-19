@@ -480,8 +480,22 @@
     <string name="settingsBackup">Backup</string>
     <string name="exportBackup">Export backup</string>
     <string name="importBackup">Import backup</string>
-    <string name="importBackupTitle">Import backup?</string>
+    <string name="importBackupTitle">Restore backup?</string>
     <string name="importBackupText">Everything on this device — profiles, icons, watch rules and settings — will be **replaced** with the backup\'s contents.</string>
+    <string name="backupPreviewFrom">Backup from %1$s</string>
+    <string name="backupPreviewAppVersion">Renkin %1$s</string>
+    <string name="backupPreviewProfiles">Profiles</string>
+    <string name="backupPreviewIcons">Icons</string>
+    <string name="backupPreviewWatchRules">Watch rules</string>
+    <string name="backupPreviewWatchBreakdown">%1$d active · %2$d completed</string>
+    <string name="backupPreviewSavedStyles">Saved styles</string>
+    <string name="backupPreviewUploadedImages">Uploaded images</string>
+    <string name="backupPreviewMoreProfiles">+%1$d more</string>
+    <string name="backupRestoreAction">Restore</string>
+    <plurals name="backupPreviewProfileIconCount">
+        <item quantity="one">%1$d icon</item>
+        <item quantity="other">%1$d icons</item>
+    </plurals>
     <string name="backupExported">Backup exported</string>
     <string name="backupExportFailed">Couldn\'t export the backup</string>
     <string name="backupImported">Backup imported</string>
