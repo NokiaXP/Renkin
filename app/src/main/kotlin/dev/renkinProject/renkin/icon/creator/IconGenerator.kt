@@ -94,14 +94,6 @@ class IconGenerator(
         }
     }
 
-    // Colorize blend for bitmap icons: SRC_IN replaces the icon's colours with the picked one (flat
-    // fill), MULTIPLY tints them (mixes with the original). Vectors always recolour flat regardless.
-    private val colorizeMode
-        get() = when {
-            options.colorizeFlat && !options.colorizeMonochrome -> PorterDuff.Mode.SRC_IN
-            options.colorizeLighten && !options.colorizeMonochrome -> PorterDuff.Mode.SCREEN
-            else -> PorterDuff.Mode.MULTIPLY
-        }
     fun generateIcon(application: PackageInfoStruct,
                      onUpdate: (application: PackageInfoStruct, icon: IconPackDrawable?, sourcePackName: String) -> Unit) {
         generateIcons(listOf(application)) { app, icon, _, source -> onUpdate(app, icon, source) }
@@ -275,7 +267,7 @@ class IconGenerator(
         return if (options.primaryImageEdit == ImageEdit.COLORIZE ||
             options.primaryImageEdit == ImageEdit.COLORIZE_SEGMENTS
         )
-            colorizeImage(bitmapIcon, parsedIcon, colorizeMode)
+            colorizeImage(bitmapIcon, parsedIcon, options.colorizeBlendMode)
         else
             getDefaultIcon(
                 bitmapIcon,
@@ -322,7 +314,7 @@ class IconGenerator(
             bitmapIcon,
             parsedIcon,
             imageEdit,
-            colorizeMode,
+            options.colorizeBlendMode,
             preserveAdaptiveAppearance = changesWithMaterialYou
         )
     }
@@ -357,7 +349,7 @@ class IconGenerator(
                 bitmapIcon = completeIcon,
                 parsedIcon = null,
                 imageEdit = imageEdit,
-                mode = colorizeMode
+                mode = options.colorizeBlendMode
             )
         }
         // The standard variant deliberately exports only the foreground; the complete adaptive
@@ -366,11 +358,11 @@ class IconGenerator(
         if (options.applicationIconVariant == ApplicationIconVariant.MONOCHROME) {
             // This is deliberately based on the regular launcher artwork, not the optional
             // Material You layer: every app is supported and its original design stays intact.
-            return generateImage(toMonochrome(bitmapIcon), null, imageEdit, colorizeMode)
+            return generateImage(toMonochrome(bitmapIcon), null, imageEdit, options.colorizeBlendMode)
         }
         val parsedIcon = parseApplicationIcon(application)
 
-        return generateImage(bitmapIcon, parsedIcon, imageEdit, colorizeMode)
+        return generateImage(bitmapIcon, parsedIcon, imageEdit, options.colorizeBlendMode)
     }
 
     private fun preservePackLayers(packName: String, resource: ResourceDrawable): AdaptiveIconPackDrawable? {

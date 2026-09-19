@@ -107,7 +107,6 @@ private const val KEY_SHADOW_BLUR = "shadow.blur"
 private const val KEY_SHADOW_DISTANCE = "shadow.distance"
 private const val KEY_SHADOW_ANGLE = "shadow.angle"
 private const val KEY_SHADOW_ALL_DIRECTIONS = "shadow.allDirections"
-private const val KEY_SHADOW_COLOR = "shadow.color"
 private const val KEY_SHADOW_STYLE = "shadow.style"
 private const val KEY_SHADOW_OPACITY = "shadow.opacity"
 
@@ -148,7 +147,6 @@ fun encodeModifierPreset(payload: ModifierPresetPayload): String = buildList {
         add("$KEY_SHADOW_DISTANCE$ASSIGN${shadow.distance}")
         add("$KEY_SHADOW_ANGLE$ASSIGN${shadow.angle}")
         add("$KEY_SHADOW_ALL_DIRECTIONS$ASSIGN${shadow.allDirections}")
-        add("$KEY_SHADOW_COLOR$ASSIGN${shadow.style.firstColor}")
         add("$KEY_SHADOW_STYLE$ASSIGN${encodeColorizerStyle(shadow.style)}")
         add("$KEY_SHADOW_OPACITY$ASSIGN${shadow.opacity}")
     }
@@ -205,24 +203,20 @@ fun decodeModifierPreset(encoded: String): ModifierPresetPayload? {
     val shadow = if (values[KEY_SHADOW] != null) {
         ModifierPresetShadow(
             enabled = values[KEY_SHADOW_ENABLED]?.toBooleanStrictOrNull() ?: false,
-            blur = values.floatIn(KEY_SHADOW_BLUR, SHADOW_BLUR_MIN..SHADOW_BLUR_MAX, 12f),
+            blur = values.floatIn(KEY_SHADOW_BLUR, SHADOW_BLUR_MIN..SHADOW_BLUR_MAX, SHADOW_BLUR_DEFAULT),
             distance = values.floatIn(
                 KEY_SHADOW_DISTANCE,
                 SHADOW_DISTANCE_MIN..SHADOW_DISTANCE_MAX,
-                7f
+                SHADOW_DISTANCE_DEFAULT
             ),
-            angle = values.floatIn(KEY_SHADOW_ANGLE, 0f..360f, 135f),
+            angle = values.floatIn(KEY_SHADOW_ANGLE, 0f..360f, SHADOW_ANGLE_DEFAULT),
             allDirections = values[KEY_SHADOW_ALL_DIRECTIONS]
                 ?.toBooleanStrictOrNull() ?: false,
-            style = values[KEY_SHADOW_STYLE]?.let(::decodeColorizerStyle)
-                ?: ColorizerStyle(
-                    firstColor = values[KEY_SHADOW_COLOR]?.toIntOrNull()
-                        ?: android.graphics.Color.BLACK
-                ),
+            style = values.styleOrDefault(KEY_SHADOW_STYLE, android.graphics.Color.BLACK),
             opacity = values.floatIn(
                 KEY_SHADOW_OPACITY,
                 SHADOW_OPACITY_MIN..SHADOW_OPACITY_MAX,
-                0.35f
+                SHADOW_OPACITY_DEFAULT
             )
         )
     } else null
@@ -310,7 +304,6 @@ fun GenerationOptions.withModifierPreset(payload: ModifierPresetPayload): Genera
             shadowDistance = shadow.distance,
             shadowAngle = shadow.angle,
             shadowAllDirections = shadow.allDirections,
-            shadowColor = shadow.style.firstColor,
             shadowStyle = shadow.style,
             shadowOpacity = shadow.opacity
         )
@@ -318,8 +311,9 @@ fun GenerationOptions.withModifierPreset(payload: ModifierPresetPayload): Genera
     return result
 }
 
-// A damaged or missing style falls back to plain white rather than dropping the whole group: the
+// A damaged or missing style falls back to a plain colour rather than dropping the whole group: the
 // user still gets the shape/outline/effect they saved, with a colour they can see and fix.
-private fun Map<String, String>.styleOrDefault(key: String): ColorizerStyle =
-    this[key]?.let(::decodeColorizerStyle)
-        ?: ColorizerStyle(firstColor = android.graphics.Color.WHITE)
+private fun Map<String, String>.styleOrDefault(
+    key: String,
+    fallbackColor: Int = android.graphics.Color.WHITE
+): ColorizerStyle = this[key]?.let(::decodeColorizerStyle) ?: ColorizerStyle(firstColor = fallbackColor)

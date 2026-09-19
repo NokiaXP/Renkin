@@ -38,13 +38,6 @@ internal class IconImageEditPipeline(
     private val options: GenerationOptions,
     private val adjustments: IconAdjustmentPipeline = IconAdjustmentPipeline(resources, options)
 ) {
-    private val colorizeMode
-        get() = when {
-            options.colorizeFlat && !options.colorizeMonochrome -> PorterDuff.Mode.SRC_IN
-            options.colorizeLighten && !options.colorizeMonochrome -> PorterDuff.Mode.SCREEN
-            else -> PorterDuff.Mode.MULTIPLY
-        }
-
     private val colorizeColor
         get() = if (options.colorizeInverse) invertArgb(options.color) else options.color
 
@@ -67,7 +60,7 @@ internal class IconImageEditPipeline(
                 val foreground = colorizeAdaptiveForeground(icon.foreground)
                 return icon.withForeground(foreground)
             }
-            return applyToBitmap(icon.toBitmap(), imageEdit, colorizeMode)
+            return applyToBitmap(icon.toBitmap(), imageEdit, options.colorizeBlendMode)
         }
 
         if (imageEdit == ImageEdit.COLORIZE &&
@@ -86,13 +79,13 @@ internal class IconImageEditPipeline(
             val copy = ImageVectorDrawable(icon.toImageVector())
             return when (imageEdit) {
                 ImageEdit.NONE -> icon
-                ImageEdit.COLORIZE_SEGMENTS -> colorize(copy.toBitmap(), colorizeMode)
+                ImageEdit.COLORIZE_SEGMENTS -> colorize(copy.toBitmap(), options.colorizeBlendMode)
                 ImageEdit.COLORIZE -> {
                     if (options.colorizeLighten ||
                         options.colorizerMode == ColorizerMode.GRADIENT ||
                         options.colorizeMonochrome
                     ) {
-                        colorize(copy.toBitmap(), colorizeMode)
+                        colorize(copy.toBitmap(), options.colorizeBlendMode)
                     } else {
                         copy.root.setReferenceColorPaths(SolidColor(Color(colorizeColor)))
                         copy.tintColor = Color.Unspecified
@@ -105,7 +98,7 @@ internal class IconImageEditPipeline(
             }
         }
 
-        val modified = applyToBitmap(icon.toBitmap(), imageEdit, colorizeMode)
+        val modified = applyToBitmap(icon.toBitmap(), imageEdit, options.colorizeBlendMode)
         return preserveBitmapPresentation(icon, modified)
     }
 
@@ -123,7 +116,7 @@ internal class IconImageEditPipeline(
 
     private fun colorizeAdaptiveForeground(source: Bitmap): Bitmap {
         if (options.colorizerMode != ColorizerMode.GRADIENT) {
-            return colorize(source, colorizeMode).toBitmap()
+            return colorize(source, options.colorizeBlendMode).toBitmap()
         }
         val style = ColorizerStyle(
             mode = options.colorizerMode,
@@ -137,7 +130,8 @@ internal class IconImageEditPipeline(
         val base = if (options.colorizeMonochrome) monochromeBitmap(source, options.colorizeInverse) else source
         val pixels = IntArray(source.width * source.height)
         base.getPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
-        val solid = options.colorizeFlat && !options.colorizeMonochrome
+        val solid = options.colorizeBlendMode == PorterDuff.Mode.SRC_IN
+        val lighten = options.colorizeBlendMode == PorterDuff.Mode.SCREEN
         for (index in pixels.indices) {
             val original = pixels[index]
             val tint = gradient[index]
@@ -147,7 +141,7 @@ internal class IconImageEditPipeline(
                 val color = (tint ushr shift) and 255
                 return when {
                     solid -> color
-                    options.colorizeLighten ->
+                    lighten ->
                         (value + (255 - value) * tintAlpha * color / 255f).toInt()
                     else -> (value * (1f - tintAlpha + tintAlpha * color / 255f)).toInt()
                 }
@@ -209,7 +203,7 @@ internal class IconImageEditPipeline(
     }
 
     internal fun colorizeVector(vector: ImageVectorDrawable): IconPackDrawable {
-        if (options.colorizeLighten) return colorize(vector.toBitmap(), colorizeMode)
+        if (options.colorizeLighten) return colorize(vector.toBitmap(), options.colorizeBlendMode)
         vector.root.editPathColors(
             SolidColor(Color.Unspecified),
             SolidColor(Color(colorizeColor))

@@ -29,4 +29,16 @@ class ColorizerLightenTest {
         assertEquals(0, Color.alpha(result.getPixel(0, 0)))
         assertEquals(Color.argb(128, 255, 175, 128), result.getPixel(1, 0))
     }
+
+    @Test
+    fun singleColorInverse_tintsBeforeInvertingLikeTheGenerator() {
+        val source = Bitmap.createBitmap(intArrayOf(Color.BLACK), 1, 1, Bitmap.Config.ARGB_8888)
+
+        val result = colorizeSampleBitmap(
+            source,
+            ColorizerStyle(firstColor = Color.RED, lighten = true, inverse = true)
+        )
+
+        assertEquals(Color.CYAN, result.getPixel(0, 0))
+    }
 }
