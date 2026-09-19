@@ -95,13 +95,15 @@ class WatchRepository(private val db: WatchDatabase) {
 
     // --- Backup ---------------------------------------------------------------
 
-    /** Every profile's rules with their children; backup export filters transient completions. */
+    /** Every profile's rules with their children. */
     suspend fun getAllRules(): List<RuleWithDetails> = dao.getAllRulesWithDetails()
+
+    suspend fun getStatesForRule(ruleId: Long): List<WatchState> = dao.getStatesForRule(ruleId)
 
     /**
      * Backup import: wipes the whole watch store and inserts [rules] under fresh ids.
-     * Suggestions and baselines are deliberately not restored. Completed rules are skipped too:
-     * without their suggestion candidates they would only create dead Done cards and badges.
+     * Rule ids are regenerated, so every baseline, suggestion and candidate is re-owned by the
+     * inserted rule. Legacy completed entries without candidates are skipped.
      */
     suspend fun replaceAllRules(rules: List<WatchRuleImport>) = db.withTransaction {
         dao.deleteAllCandidates()
@@ -119,7 +121,7 @@ class WatchRepository(private val db: WatchDatabase) {
     }
 
     private suspend fun insertImportedRules(rules: List<WatchRuleImport>) {
-        for (r in rules.filterNot { it.completed }) {
+        for (r in rules.filterNot { it.completed && it.suggestions.isEmpty() }) {
             val ruleId = dao.insertRule(
                 WatchRule(
                     watchAllPacks = r.watchAllPacks,
@@ -130,6 +132,25 @@ class WatchRepository(private val db: WatchDatabase) {
                 )
             )
             writeRuleChildren(ruleId, r.apps, r.watchAllPacks, r.packs)
+            dao.upsertStates(r.baselines.map { it.toWatchState(ruleId) })
+            for (suggestion in r.suggestions) {
+                val suggestionId = dao.insertSuggestion(
+                    IconSuggestion(
+                        ruleId = ruleId,
+                        packageName = suggestion.packageName,
+                        activityName = suggestion.activityName,
+                        createdAt = suggestion.createdAt
+                    )
+                )
+                dao.insertCandidates(suggestion.candidates.map {
+                    IconSuggestionCandidate(
+                        suggestionId = suggestionId,
+                        iconPackPackage = it.iconPackPackage,
+                        drawableName = it.drawableName,
+                        iconHash = it.iconHash
+                    )
+                })
+            }
         }
     }
 
@@ -139,6 +160,10 @@ class WatchRepository(private val db: WatchDatabase) {
         dao.getState(ruleId, packageName, activityName, iconPackPackage)
 
     suspend fun upsertState(state: WatchState) = dao.upsertState(state)
+
+    suspend fun upsertStates(ruleId: Long, states: List<BaselineInput>) {
+        dao.upsertStates(states.map { it.toWatchState(ruleId) })
+    }
 
     /** Moves a watched app to its sole replacement launcher activity and installs its baseline. */
     suspend fun migrateRuleApp(
@@ -272,5 +297,14 @@ data class WatchRuleImport(
     val createdAt: Long,
     val completedAt: Long?,
     val apps: List<AppComponent>,
-    val packs: List<String>
+    val packs: List<String>,
+    val baselines: List<BaselineInput> = emptyList(),
+    val suggestions: List<SuggestionImport> = emptyList()
+)
+
+data class SuggestionImport(
+    val packageName: String,
+    val activityName: String,
+    val createdAt: Long,
+    val candidates: List<CandidateInput>
 )

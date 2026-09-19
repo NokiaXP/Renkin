@@ -31,14 +31,18 @@ import androidx.datastore.preferences.preferencesDataStore
 import dev.renkinProject.renkin.data.UploadedImageStore
 import dev.renkinProject.renkin.data.isDarkModeEnabled
 import dev.renkinProject.renkin.data.WatchCheckIntervalKey
+import dev.renkinProject.renkin.data.AutoBackupIntervalKey
+import dev.renkinProject.renkin.data.AUTO_BACKUP_INTERVAL_OFF
 import dev.renkinProject.renkin.data.WATCH_CHECK_INTERVAL_DEFAULT
 import dev.renkinProject.renkin.data.getIntValue
 import dev.renkinProject.renkin.data.normalizeWatchCheckInterval
+import dev.renkinProject.renkin.data.normalizeAutoBackupInterval
 import dev.renkinProject.renkin.apk.IconPackBuilder
 import dev.renkinProject.renkin.apk.ExternalInstallAwaiter
 import dev.renkinProject.renkin.packages.ApplicationManager
 import dev.renkinProject.renkin.packages.IconPackCatalog
 import dev.renkinProject.renkin.service.WatchWorker
+import dev.renkinProject.renkin.service.AutoBackupWorker
 import dev.renkinProject.renkin.util.CrashReporter
 import dev.renkinProject.renkin.ui.*
 import dev.renkinProject.renkin.ui.theme.RenkinTheme
@@ -97,6 +101,14 @@ class MainActivity : ComponentActivity() {
                 .getIntValue(WatchCheckIntervalKey, WATCH_CHECK_INTERVAL_DEFAULT)
                 .let(::normalizeWatchCheckInterval)
             WatchWorker.schedulePeriodic(applicationContext, intervalMinutes)
+            val autoBackupHours = applicationContext.dataStore.data.first()
+                .getIntValue(AutoBackupIntervalKey, AUTO_BACKUP_INTERVAL_OFF)
+                .let(::normalizeAutoBackupInterval)
+            AutoBackupWorker.schedule(
+                applicationContext,
+                autoBackupHours,
+                androidx.work.ExistingPeriodicWorkPolicy.KEEP
+            )
             // Drop crash logs older than the retention window (and migrate any legacy log).
             CrashReporter.prune(applicationContext)
         }

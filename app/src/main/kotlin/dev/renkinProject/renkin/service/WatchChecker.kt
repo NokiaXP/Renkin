@@ -61,11 +61,11 @@ internal inline fun <T> readWatchPackOrNull(
  */
 class WatchChecker(
     context: Context,
-    private val iconPackCatalog: IconPackCatalog = IconPackCatalog(context)
+    private val iconPackCatalog: IconPackCatalog = IconPackCatalog(context),
+    private val repo: WatchRepository = WatchRepository(context)
 ) {
     private val appMan = ApplicationManager(context)
     private val installedAppCatalog = InstalledAppCatalog(context)
-    private val repo = WatchRepository(context)
 
     data class FiredSuggestion(
         val suggestionId: Long,
@@ -254,6 +254,27 @@ class WatchChecker(
         checkMutex.withLock {
             val baseline = buildBaseline(apps, watchAllPacks, packPackages)
             repo.saveRule(existingRuleId, apps, watchAllPacks, packPackages, profileId, baseline)
+        }
+    }
+
+    suspend fun initializeMissingBaselines() = withContext(Dispatchers.Default) {
+        checkMutex.withLock {
+            val installedPacks = watchablePacks()
+            for (rule in repo.getActiveRules()) {
+                val existing = repo.getStatesForRule(rule.rule.id)
+                    .mapTo(mutableSetOf()) {
+                        Triple(it.packageName, it.activityName, it.iconPackPackage)
+                    }
+                val baseline = buildBaseline(
+                    apps = rule.apps.map { AppComponent(it.packageName, it.activityName) },
+                    watchAllPacks = rule.rule.watchAllPacks,
+                    selectedPacks = rule.packs.map { it.iconPackPackage },
+                    installedPacks = installedPacks
+                ).filterNot {
+                    Triple(it.packageName, it.activityName, it.iconPackPackage) in existing
+                }
+                repo.upsertStates(rule.rule.id, baseline)
+            }
         }
     }
 

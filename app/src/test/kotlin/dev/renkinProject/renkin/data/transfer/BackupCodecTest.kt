@@ -52,12 +52,24 @@ class BackupCodecTest {
             BackupWatchRule(
                 watchAllPacks = false, completed = false, createdAt = 111L, completedAt = null,
                 apps = listOf(AppComponent("com.a", "com.a.Main")),
-                packs = listOf("pack.x", "pack.y")
+                packs = listOf("pack.x", "pack.y"),
+                baselines = listOf(
+                    BackupWatchState(
+                        "com.a", "com.a.Main", "pack.x", 12L,
+                        "drawable_a", "hash-a", 444L
+                    )
+                )
             ),
             BackupWatchRule(
                 watchAllPacks = true, completed = true, createdAt = 222L, completedAt = 333L,
                 apps = listOf(AppComponent("com.b", "com.b.Main")),
-                packs = emptyList()
+                packs = listOf("pack.z"),
+                suggestions = listOf(
+                    BackupWatchSuggestion(
+                        "com.b", "com.b.Main", 333L,
+                        listOf(BackupWatchCandidate("pack.z", "drawable_b", "hash-b"))
+                    )
+                )
             )
         )
         return BackupData(

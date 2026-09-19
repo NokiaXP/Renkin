@@ -14,10 +14,13 @@ import dev.renkinProject.renkin.BuildConfig
 import dev.renkinProject.renkin.apk.IconPackBuilder
 import dev.renkinProject.renkin.apk.PackKeystore
 import dev.renkinProject.renkin.data.ActiveProfileIdKey
+import dev.renkinProject.renkin.data.AutoBackupIntervalKey
+import dev.renkinProject.renkin.data.AutoBackupTreeUriKey
 import dev.renkinProject.renkin.data.DEFAULT_PROFILE_ID
 import dev.renkinProject.renkin.data.DbApplication
 import dev.renkinProject.renkin.data.InstalledApplication
 import dev.renkinProject.renkin.data.LastWatchCheckAtKey
+import dev.renkinProject.renkin.data.LastAutoBackupAtKey
 import dev.renkinProject.renkin.data.ColorPreset
 import dev.renkinProject.renkin.data.ModifierPreset
 import dev.renkinProject.renkin.data.PackVerdict
@@ -26,12 +29,16 @@ import dev.renkinProject.renkin.data.UploadedImageStore
 import dev.renkinProject.renkin.data.snapshotProfilePrefs
 import dev.renkinProject.renkin.data.getPreferencesAfterPendingWrites
 import dev.renkinProject.renkin.data.watch.AppComponent
+import dev.renkinProject.renkin.data.watch.BaselineInput
+import dev.renkinProject.renkin.data.watch.CandidateInput
 import dev.renkinProject.renkin.data.watch.RuleWithDetails
+import dev.renkinProject.renkin.data.watch.SuggestionImport
 import dev.renkinProject.renkin.data.watch.WatchRepository
 import dev.renkinProject.renkin.data.watch.WatchRuleImport
 import dev.renkinProject.renkin.dataStore
 import dev.renkinProject.renkin.packages.ApplicationManager
 import dev.renkinProject.renkin.packages.IconPackCatalog
+import dev.renkinProject.renkin.service.WatchChecker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -113,10 +120,7 @@ class BackupManager(
 
         val allIcons = packRepo.getAllProfilesApplications()
         val iconsByProfile = allIcons.groupBy { it.profileId }
-        // Completed watch entries depend on transient suggestions that cannot be restored.
-        // Keep them out of new archives; the repository also rejects them from older files.
         val rulesByProfile = watchRepo.getAllRules()
-            .filterNot { it.rule.completed }
             .groupBy { it.rule.profileId }
         val data = BackupData(
             profiles = packRepo.profiles().map { profile ->
@@ -127,8 +131,7 @@ class BackupManager(
                 )
             },
             prefs = prefs.asMap().mapNotNull { (key, value) ->
-                // The last-watch-check timestamp is about THIS device's worker, not the data.
-                if (key.name == LastWatchCheckAtKey.name) return@mapNotNull null
+                if (key.name in DEVICE_LOCAL_PREF_NAMES) return@mapNotNull null
                 BackupPref.of(value)?.let { key.name to it }
             }.toMap(),
             packLabels = packLabelsFor(allIcons.mapNotNull { it.sourcePackName.ifEmpty { null } }.toSet()),
@@ -289,6 +292,7 @@ class BackupManager(
         watchRepo.replaceAllRules(data.profiles.flatMap { bp ->
             bp.watchRules.map { it.toImport(bp.profile.id) }
         })
+        WatchChecker(context, iconPackCatalog, watchRepo).initializeMissingBaselines()
         // Replace-all, like everything else in a full restore. Archives written before saved
         // colours existed carry none, which correctly clears a library the user is replacing.
         packRepo.replaceColorPresets(
@@ -360,6 +364,7 @@ class BackupManager(
         )
         packRepo.replaceAll(newId, bp.icons.map { it.copy(profileId = newId) })
         watchRepo.insertRules(bp.watchRules.map { it.toImport(newId) })
+        WatchChecker(context, iconPackCatalog, watchRepo).initializeMissingBaselines()
         storePackLabels(data.packLabels)
         return ImportResult(ImportKind.PROFILE, 1, bp.icons.size, importedProfileId = newId)
     }
@@ -387,13 +392,34 @@ class BackupManager(
 
     // ---- Helpers ---------------------------------------------------------------------
 
-    private fun RuleWithDetails.toBackupRule() = BackupWatchRule(
+    private suspend fun RuleWithDetails.toBackupRule(): BackupWatchRule = BackupWatchRule(
         watchAllPacks = rule.watchAllPacks,
         completed = rule.completed,
         createdAt = rule.createdAt,
         completedAt = rule.completedAt,
         apps = apps.map { AppComponent(it.packageName, it.activityName) },
-        packs = packs.map { it.iconPackPackage }
+        packs = packs.map { it.iconPackPackage },
+        baselines = watchRepo.getStatesForRule(rule.id).map {
+            BackupWatchState(
+                packageName = it.packageName,
+                activityName = it.activityName,
+                iconPackPackage = it.iconPackPackage,
+                lastPackVersionCode = it.lastPackVersionCode,
+                lastIconName = it.lastIconName,
+                lastIconHash = it.lastIconHash,
+                lastCheckedAt = it.lastCheckedAt
+            )
+        },
+        suggestions = suggestions.map { suggestion ->
+            BackupWatchSuggestion(
+                packageName = suggestion.packageName,
+                activityName = suggestion.activityName,
+                createdAt = suggestion.createdAt,
+                candidates = watchRepo.getCandidates(suggestion.id).map {
+                    BackupWatchCandidate(it.iconPackPackage, it.drawableName, it.iconHash)
+                }
+            )
+        }
     )
 
     private fun BackupWatchRule.toImport(profileId: Long) = WatchRuleImport(
@@ -403,7 +429,28 @@ class BackupManager(
         createdAt = createdAt,
         completedAt = completedAt,
         apps = apps,
-        packs = packs
+        packs = packs,
+        baselines = baselines.map {
+            BaselineInput(
+                packageName = it.packageName,
+                activityName = it.activityName,
+                iconPackPackage = it.iconPackPackage,
+                lastPackVersionCode = it.lastPackVersionCode,
+                lastIconName = it.lastIconName,
+                lastIconHash = it.lastIconHash,
+                lastCheckedAt = it.lastCheckedAt
+            )
+        },
+        suggestions = suggestions.map {
+            SuggestionImport(
+                packageName = it.packageName,
+                activityName = it.activityName,
+                createdAt = it.createdAt,
+                candidates = it.candidates.map { candidate ->
+                    CandidateInput(candidate.iconPackPackage, candidate.drawableName, candidate.iconHash)
+                }
+            )
+        }
     )
 
     /** Display names for [packs]: from the installed copy, else the verdict cache. */
@@ -430,8 +477,12 @@ class BackupManager(
 
     private suspend fun restorePrefs(prefs: Map<String, BackupPref>) {
         context.dataStore.edit { store ->
+            val autoBackupInterval = store[AutoBackupIntervalKey]
+            val autoBackupTreeUri = store[AutoBackupTreeUriKey]
+            val lastAutoBackupAt = store[LastAutoBackupAtKey]
             store.clear()
             for ((name, pref) in prefs) {
+                if (name in DEVICE_LOCAL_PREF_NAMES) continue
                 when (pref.tag) {
                     BackupPref.BOOL -> store[booleanPreferencesKey(name)] = pref.value as Boolean
                     BackupPref.INT -> store[intPreferencesKey(name)] = pref.value as Int
@@ -443,6 +494,9 @@ class BackupManager(
                         (pref.value as Collection<*>).filterIsInstance<String>().toSet()
                 }
             }
+            autoBackupInterval?.let { store[AutoBackupIntervalKey] = it }
+            autoBackupTreeUri?.let { store[AutoBackupTreeUriKey] = it }
+            lastAutoBackupAt?.let { store[LastAutoBackupAtKey] = it }
         }
     }
 
@@ -454,6 +508,12 @@ class BackupManager(
         .toString()
 
     companion object {
+        private val DEVICE_LOCAL_PREF_NAMES = setOf(
+            LastWatchCheckAtKey.name,
+            AutoBackupIntervalKey.name,
+            AutoBackupTreeUriKey.name,
+            LastAutoBackupAtKey.name
+        )
         private const val MANIFEST_ENTRY = "manifest.json"
         private const val DATA_ENTRY = "data.json"
         private const val KEYSTORE_ENTRY = "keystore/" + IconPackBuilder.KEYSTORE_FILE_NAME
