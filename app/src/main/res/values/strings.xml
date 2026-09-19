@@ -36,6 +36,7 @@
     <string name="installerShizuku">Shizuku</string>
     <string name="installerSystemDescription">Android package installer with an automatic compatibility fallback.</string>
     <string name="installerSelect">Select installer</string>
+    <string name="installerFirstChoiceDescription">Choose how Renkin installs icon packs. Change it or enable Ask every time in Settings.</string>
     <string name="installerUnavailable">Unavailable installer</string>
     <string name="installerAskEveryTime">Ask every time</string>
     <string name="installerAskEveryTimeDescription">Show this installer picker whenever a generated icon pack is ready to install.</string>

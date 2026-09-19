@@ -321,9 +321,10 @@ fun MainColumn(iconPacks: List<IconPack>) {
         )
     }
 
-    if (viewModel.installerSelectionPending) {
+    viewModel.installerPromptReason?.let { reason ->
         InstallerPromptDialog(
             selected = prefs.getPreferencesValue().installerSelection(),
+            explainSavedChoice = reason == MainViewModel.InstallerPromptReason.FIRST_CHOICE,
             onSelect = viewModel::confirmInstallerSelection,
             onDismiss = viewModel::dismissInstallerSelection
         )
