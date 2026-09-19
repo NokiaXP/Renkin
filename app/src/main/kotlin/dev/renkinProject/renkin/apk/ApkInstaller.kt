@@ -248,7 +248,7 @@ class ApkInstaller(context: Context) {
         packageName: String,
         previous: InstalledPackageState?
     ): ApkInstallOutcome {
-        val readiness = ShizukuSupport.state()
+        val readiness = ShizukuSupport.state(appContext)
         val initialAttempts = if (readiness == ShizukuState.READY) {
             val outcome = installWith(apk, ApkInstallBackend.SHIZUKU)
             if (outcome.result == ApkInstallResult.SUCCESS) {

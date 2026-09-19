@@ -32,15 +32,14 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -57,7 +56,6 @@ import dev.renkinProject.renkin.R
 import dev.renkinProject.renkin.apk.InstallerOption
 import dev.renkinProject.renkin.apk.InstallerSelection
 import dev.renkinProject.renkin.apk.ShizukuState
-import dev.renkinProject.renkin.apk.ShizukuSupport
 import dev.renkinProject.renkin.data.InstallMethod
 import dev.renkinProject.renkin.ui.theme.CardShape
 import dev.renkinProject.renkin.ui.theme.DialogShape
@@ -71,7 +69,9 @@ fun InstallerPickerScreen(
     onAskEveryTimeChange: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val options = installerOptions()
+    val viewModel: MainViewModel = hiltViewModel()
+    val options = installerOptions(viewModel)
+    val shizukuActions = shizukuActions(viewModel)
     val listState = rememberLazyListState()
 
     Dialog(
@@ -108,7 +108,7 @@ fun InstallerPickerScreen(
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        installerItems(options, selected, onSelect)
+                        installerItems(options, selected, onSelect, shizukuActions)
 
                         item(key = "ask_every_time") {
                             AskEveryTimeCard(
@@ -130,7 +130,9 @@ fun InstallerPromptDialog(
     onSelect: (InstallerSelection) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val options = installerOptions()
+    val viewModel: MainViewModel = hiltViewModel()
+    val options = installerOptions(viewModel)
+    val shizukuActions = shizukuActions(viewModel)
     val listState = rememberLazyListState()
 
     Dialog(onDismissRequest = onDismiss) {
@@ -156,7 +158,7 @@ fun InstallerPromptDialog(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    installerItems(options, selected, onSelect)
+                    installerItems(options, selected, onSelect, shizukuActions)
                 }
             }
         }
@@ -164,16 +166,12 @@ fun InstallerPromptDialog(
 }
 
 @Composable
-private fun installerOptions(): List<InstallerOption> {
-    val viewModel: MainViewModel = hiltViewModel()
+private fun installerOptions(viewModel: MainViewModel): List<InstallerOption> {
     val discovered by produceState<List<InstallerOption>>(emptyList()) {
         value = viewModel.installerEntries()
     }
-    var shizukuState by remember { mutableStateOf(ShizukuSupport.state()) }
-    DisposableEffect(Unit) {
-        val registration = ShizukuSupport.observe { shizukuState = ShizukuSupport.state() }
-        onDispose { registration.close() }
-    }
+    LaunchedEffect(Unit) { viewModel.refreshShizukuState() }
+    val shizukuState = viewModel.shizukuState
     val shizukuDetail = shizukuDescription(shizukuState)
     return remember(discovered, shizukuState, shizukuDetail) {
         discovered.map { option ->
@@ -192,7 +190,8 @@ private fun installerOptions(): List<InstallerOption> {
 private fun LazyListScope.installerItems(
     options: List<InstallerOption>,
     selected: InstallerSelection,
-    onSelect: (InstallerSelection) -> Unit
+    onSelect: (InstallerSelection) -> Unit,
+    shizukuActions: ShizukuActions
 ) {
     items(options, key = { it.selection.preferenceToken }) { option ->
         InstallerOptionCard(
@@ -200,10 +199,12 @@ private fun LazyListScope.installerItems(
             selected = option.selection == selected,
             onClick = {
                 if (option.selection.method == InstallMethod.SHIZUKU) {
-                    ShizukuSupport.requestPermission()
+                    shizukuActions.onRequestPermission()
                 }
                 onSelect(option.selection)
-            }
+            },
+            onOpenShizuku = shizukuActions.onOpenManager
+                ?.takeIf { option.selection.method == InstallMethod.SHIZUKU }
         )
     }
 }
@@ -211,10 +212,32 @@ private fun LazyListScope.installerItems(
 private val InstallerSelection.preferenceToken: String
     get() = "${method.name}:$externalComponent"
 
+private class ShizukuActions(
+    val onRequestPermission: () -> Unit,
+    // Null when opening the Shizuku app would not help: ready, missing or unsupported.
+    val onOpenManager: (() -> Unit)?
+)
+
+@Composable
+private fun shizukuActions(viewModel: MainViewModel): ShizukuActions {
+    val canFixInShizukuApp = viewModel.shizukuState in setOf(
+        ShizukuState.NOT_RUNNING,
+        ShizukuState.OUTDATED,
+        ShizukuState.PERMISSION_DENIED
+    )
+    return ShizukuActions(
+        onRequestPermission = viewModel::requestShizukuPermission,
+        onOpenManager = if (canFixInShizukuApp) {
+            { viewModel.openShizukuManager() }
+        } else null
+    )
+}
+
 @Composable
 private fun shizukuDescription(state: ShizukuState): String = stringResource(
     when (state) {
         ShizukuState.UNSUPPORTED -> R.string.shizukuUnsupported
+        ShizukuState.NOT_INSTALLED -> R.string.shizukuNotInstalled
         ShizukuState.NOT_RUNNING -> R.string.shizukuNotRunning
         ShizukuState.OUTDATED -> R.string.shizukuOutdated
         ShizukuState.PERMISSION_REQUIRED -> R.string.shizukuPermissionRequired
@@ -228,7 +251,8 @@ private fun shizukuDescription(state: ShizukuState): String = stringResource(
 private fun InstallerOptionCard(
     option: InstallerOption,
     selected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onOpenShizuku: (() -> Unit)? = null
 ) {
     val borderColor = if (selected) {
         MaterialTheme.colorScheme.primary
@@ -285,6 +309,14 @@ private fun InstallerOptionCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (onOpenShizuku != null) {
+                    TextButton(
+                        onClick = onOpenShizuku,
+                        contentPadding = PaddingValues(horizontal = 0.dp)
+                    ) {
+                        Text(stringResource(R.string.shizukuOpenApp))
+                    }
+                }
             }
         }
     }

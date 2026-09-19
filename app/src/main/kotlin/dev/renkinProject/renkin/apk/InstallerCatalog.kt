@@ -59,7 +59,7 @@ class InstallerCatalog(context: Context) {
                         selection = InstallerSelection(InstallMethod.SHIZUKU),
                         label = appContext.getString(R.string.installerShizuku),
                         description = appContext.getString(R.string.shizukuReady),
-                        icon = SHIZUKU_PACKAGES.firstNotNullOfOrNull(::loadApplicationIcon)
+                        icon = ShizukuSupport.managerPackage(appContext)?.let(::loadApplicationIcon)
                     )
                 )
             }
@@ -143,8 +143,4 @@ class InstallerCatalog(context: Context) {
     private fun loadApplicationIcon(packageName: String): Bitmap? = runCatching {
         packageManager.getApplicationIcon(packageName).toSafeBitmapOrNull(96, 96)
     }.getOrNull()
-
-    private companion object {
-        val SHIZUKU_PACKAGES = listOf("moe.shizuku.privileged.api", "rikka.sui")
-    }
 }
