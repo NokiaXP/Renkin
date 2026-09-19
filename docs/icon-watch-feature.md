@@ -192,6 +192,9 @@ Mirror the look of the existing full-screen editor
   longer belongs in Completed after the user applied it.
 - **Cancel/ignore:** nothing is applied; the completed rule + suggestion stay so the
   user can still apply later from the watch screen. The bell badge keeps counting it.
+- **Backup/restore:** active rules carry their per-pack baselines, and completed rules carry
+  their suggestion candidates. Legacy archives without baselines initialize them from the
+  currently installed packs during import, so existing icons are not reported as new.
 
 ## 5. Background flow (putting it together)
 

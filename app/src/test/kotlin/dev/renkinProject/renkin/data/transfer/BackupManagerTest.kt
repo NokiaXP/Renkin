@@ -11,6 +11,9 @@ import dev.renkinProject.renkin.data.Profile
 import dev.renkinProject.renkin.data.RenkinPackDatabase
 import dev.renkinProject.renkin.data.RenkinPackRepository
 import dev.renkinProject.renkin.data.watch.AppComponent
+import dev.renkinProject.renkin.data.watch.BaselineInput
+import dev.renkinProject.renkin.data.watch.CandidateInput
+import dev.renkinProject.renkin.data.watch.SuggestionImport
 import dev.renkinProject.renkin.data.watch.WatchDatabase
 import dev.renkinProject.renkin.data.watch.WatchRepository
 import dev.renkinProject.renkin.data.watch.WatchRuleImport
@@ -124,7 +127,25 @@ class BackupManagerTest {
                 WatchRuleImport(
                     profileId = 4L, watchAllPacks = false, completed = false,
                     createdAt = 42L, completedAt = null,
-                    apps = listOf(AppComponent("com.b", "com.b.Main")), packs = listOf("pack.x")
+                    apps = listOf(AppComponent("com.b", "com.b.Main")), packs = listOf("pack.x"),
+                    baselines = listOf(
+                        BaselineInput(
+                            "com.b", "com.b.Main", "pack.x", 8L,
+                            "drawable_b", "baseline-hash", 43L
+                        )
+                    )
+                ),
+                WatchRuleImport(
+                    profileId = 4L, watchAllPacks = false, completed = true,
+                    createdAt = 44L, completedAt = 45L,
+                    apps = listOf(AppComponent("com.done", "com.done.Main")),
+                    packs = listOf("pack.x"),
+                    suggestions = listOf(
+                        SuggestionImport(
+                            "com.done", "com.done.Main", 45L,
+                            listOf(CandidateInput("pack.x", "drawable_done", "candidate-hash"))
+                        )
+                    )
                 )
             )
         )
@@ -145,10 +166,23 @@ class BackupManagerTest {
         assertEquals(listOf("com.a"), tgtPackRepo.getAll(DEFAULT_PROFILE_ID).map { it.packageName })
         assertEquals("pack.x", tgtPackRepo.getAll(DEFAULT_PROFILE_ID).single().sourcePackName)
         assertEquals(listOf("com.b"), tgtPackRepo.getAll(4L).map { it.packageName })
-        val rule = tgtWatchRepo.getAllRules().single()
-        assertEquals(4L, rule.rule.profileId)
-        assertEquals(listOf("com.b"), rule.apps.map { it.packageName })
-        assertEquals(listOf("pack.x"), rule.packs.map { it.iconPackPackage })
+        val rules = tgtWatchRepo.getAllRules()
+        assertEquals(2, rules.size)
+        val activeRule = rules.single { !it.rule.completed }
+        assertEquals(4L, activeRule.rule.profileId)
+        assertEquals(listOf("com.b"), activeRule.apps.map { it.packageName })
+        assertEquals(listOf("pack.x"), activeRule.packs.map { it.iconPackPackage })
+        assertEquals(
+            "baseline-hash",
+            tgtWatchRepo.getState(activeRule.rule.id, "com.b", "com.b.Main", "pack.x")?.lastIconHash
+        )
+        val completedRule = rules.single { it.rule.completed }
+        val suggestion = completedRule.suggestions.single()
+        assertEquals("com.done", suggestion.packageName)
+        assertEquals(
+            "candidate-hash",
+            tgtWatchRepo.getCandidates(suggestion.id).single().iconHash
+        )
     }
 
     @Test

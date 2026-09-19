@@ -117,6 +117,9 @@ interface WatchDao {
     @Query("SELECT * FROM watch_state WHERE ruleId = :ruleId AND packageName = :packageName AND activityName = :activityName AND iconPackPackage = :iconPackPackage")
     suspend fun getState(ruleId: Long, packageName: String, activityName: String, iconPackPackage: String): WatchState?
 
+    @Query("SELECT * FROM watch_state WHERE ruleId = :ruleId")
+    suspend fun getStatesForRule(ruleId: Long): List<WatchState>
+
     /** Drops baselines no longer referenced by their owning active rule. */
     @Query(
         "DELETE FROM watch_state WHERE NOT EXISTS (" +

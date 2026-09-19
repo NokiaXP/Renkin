@@ -53,7 +53,32 @@ data class BackupWatchRule(
     val createdAt: Long,
     val completedAt: Long?,
     val apps: List<AppComponent>,
-    val packs: List<String>
+    val packs: List<String>,
+    val baselines: List<BackupWatchState> = emptyList(),
+    val suggestions: List<BackupWatchSuggestion> = emptyList()
+)
+
+data class BackupWatchState(
+    val packageName: String,
+    val activityName: String,
+    val iconPackPackage: String,
+    val lastPackVersionCode: Long,
+    val lastIconName: String?,
+    val lastIconHash: String?,
+    val lastCheckedAt: Long
+)
+
+data class BackupWatchSuggestion(
+    val packageName: String,
+    val activityName: String,
+    val createdAt: Long,
+    val candidates: List<BackupWatchCandidate>
+)
+
+data class BackupWatchCandidate(
+    val iconPackPackage: String,
+    val drawableName: String,
+    val iconHash: String
 )
 
 /**
@@ -89,8 +114,8 @@ data class BackupPref(val tag: String, val value: Any) {
  * round-trip is unit-testable; [BackupManager] owns the surrounding ZIP and stores.
  */
 object BackupCodec {
-    // Version 2 carries layered adaptive payloads; older importers must not silently drop those icons.
-    const val FORMAT_VERSION = 2
+    // Version 3 preserves watch baselines and pending completed suggestions.
+    const val FORMAT_VERSION = 3
 
     fun encode(data: BackupData): String {
         val root = JSONObject()
@@ -153,6 +178,40 @@ object BackupCodec {
                 }
                 r.put("apps", apps)
                 r.put("packs", JSONArray(rule.packs))
+                val baselines = JSONArray()
+                for (state in rule.baselines) {
+                    baselines.put(
+                        JSONObject()
+                            .put("packageName", state.packageName)
+                            .put("activityName", state.activityName)
+                            .put("iconPackPackage", state.iconPackPackage)
+                            .put("lastPackVersionCode", state.lastPackVersionCode)
+                            .put("lastIconName", state.lastIconName)
+                            .put("lastIconHash", state.lastIconHash)
+                            .put("lastCheckedAt", state.lastCheckedAt)
+                    )
+                }
+                r.put("baselines", baselines)
+                val suggestions = JSONArray()
+                for (suggestion in rule.suggestions) {
+                    val candidates = JSONArray()
+                    for (candidate in suggestion.candidates) {
+                        candidates.put(
+                            JSONObject()
+                                .put("iconPackPackage", candidate.iconPackPackage)
+                                .put("drawableName", candidate.drawableName)
+                                .put("iconHash", candidate.iconHash)
+                        )
+                    }
+                    suggestions.put(
+                        JSONObject()
+                            .put("packageName", suggestion.packageName)
+                            .put("activityName", suggestion.activityName)
+                            .put("createdAt", suggestion.createdAt)
+                            .put("candidates", candidates)
+                    )
+                }
+                r.put("suggestions", suggestions)
                 rules.put(r)
             }
             p.put("watchRules", rules)
@@ -284,6 +343,37 @@ object BackupCodec {
                 }
                 val packsJson = r.getJSONArray("packs")
                 val packs = (0 until packsJson.length()).map { packsJson.getString(it) }
+                val baselinesJson = r.optJSONArray("baselines") ?: JSONArray()
+                val baselines = (0 until baselinesJson.length()).map { index ->
+                    val state = baselinesJson.getJSONObject(index)
+                    BackupWatchState(
+                        packageName = state.getString("packageName"),
+                        activityName = state.getString("activityName"),
+                        iconPackPackage = state.getString("iconPackPackage"),
+                        lastPackVersionCode = state.getLong("lastPackVersionCode"),
+                        lastIconName = state.optString("lastIconName").takeIf { !state.isNull("lastIconName") },
+                        lastIconHash = state.optString("lastIconHash").takeIf { !state.isNull("lastIconHash") },
+                        lastCheckedAt = state.getLong("lastCheckedAt")
+                    )
+                }
+                val suggestionsJson = r.optJSONArray("suggestions") ?: JSONArray()
+                val suggestions = (0 until suggestionsJson.length()).map { index ->
+                    val suggestion = suggestionsJson.getJSONObject(index)
+                    val candidatesJson = suggestion.getJSONArray("candidates")
+                    BackupWatchSuggestion(
+                        packageName = suggestion.getString("packageName"),
+                        activityName = suggestion.getString("activityName"),
+                        createdAt = suggestion.getLong("createdAt"),
+                        candidates = (0 until candidatesJson.length()).map { candidateIndex ->
+                            val candidate = candidatesJson.getJSONObject(candidateIndex)
+                            BackupWatchCandidate(
+                                iconPackPackage = candidate.getString("iconPackPackage"),
+                                drawableName = candidate.getString("drawableName"),
+                                iconHash = candidate.getString("iconHash")
+                            )
+                        }
+                    )
+                }
                 rules.add(
                     BackupWatchRule(
                         watchAllPacks = r.getBoolean("watchAllPacks"),
@@ -291,7 +381,9 @@ object BackupCodec {
                         createdAt = r.getLong("createdAt"),
                         completedAt = if (r.has("completedAt")) r.getLong("completedAt") else null,
                         apps = apps,
-                        packs = packs
+                        packs = packs,
+                        baselines = baselines,
+                        suggestions = suggestions
                     )
                 )
             }

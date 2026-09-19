@@ -53,6 +53,7 @@ import dev.renkinProject.renkin.data.setIntValue
 import dev.renkinProject.renkin.data.setPrimarySource
 import dev.renkinProject.renkin.data.setStringValue
 import dev.renkinProject.renkin.data.transfer.BackupManager
+import dev.renkinProject.renkin.data.transfer.AutoBackupManager
 import dev.renkinProject.renkin.data.transfer.isIconPackStudioExport
 import dev.renkinProject.renkin.data.watch.WatchRepository
 import dev.renkinProject.renkin.drawable.IconPackDrawable
@@ -117,7 +118,8 @@ class MainViewModel @Inject constructor(
     application: Application,
     private val appProvider: ApplicationProvider,
     private val watchRepo: WatchRepository,
-    private val backupManager: BackupManager
+    private val backupManager: BackupManager,
+    private val autoBackupManager: AutoBackupManager
 ) : AndroidViewModel(application), IconPreviewBuilder {
     private val installerCatalog = InstallerCatalog(application)
     /**
@@ -1236,6 +1238,46 @@ class MainViewModel @Inject constructor(
     /** True while a backup export/import runs — Settings ignores further taps meanwhile. */
     var backupInProgress by mutableStateOf(false)
         private set
+
+    val autoBackupIntervalHours = autoBackupManager.intervalHours.stateIn(
+        viewModelScope,
+        kotlinx.coroutines.flow.SharingStarted.Eagerly,
+        0
+    )
+    val autoBackupTreeUri = autoBackupManager.treeUri.stateIn(
+        viewModelScope,
+        kotlinx.coroutines.flow.SharingStarted.Eagerly,
+        null
+    )
+    val lastAutoBackupAt = autoBackupManager.lastBackupAt.stateIn(
+        viewModelScope,
+        kotlinx.coroutines.flow.SharingStarted.Eagerly,
+        0L
+    )
+
+    fun setAutoBackupInterval(hours: Int) {
+        viewModelScope.launch {
+            runCatching { autoBackupManager.setInterval(hours) }
+                .onFailure {
+                    Log.error("MainViewModel", "Could not update automatic backup interval", it)
+                    _toastEvents.trySend(R.string.autoBackupSetupFailed)
+                }
+        }
+    }
+
+    fun setAutoBackupFolder(uri: Uri, intervalHours: Int) {
+        viewModelScope.launch {
+            runCatching { autoBackupManager.setFolder(uri, intervalHours) }
+                .onFailure {
+                    Log.error("MainViewModel", "Could not access automatic backup folder", it)
+                    _toastEvents.trySend(R.string.autoBackupSetupFailed)
+                }
+        }
+    }
+
+    suspend fun autoBackupFolderName(uri: Uri): String? = withContext(Dispatchers.IO) {
+        runCatching { autoBackupManager.folderName(uri) }.getOrNull()
+    }
 
     /**
      * Runs one backup/import operation at a time: the shared busy flag gates re-entry, a

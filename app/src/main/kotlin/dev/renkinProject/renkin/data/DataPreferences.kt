@@ -54,6 +54,9 @@ private const val APP_SORT_ORDER_NAME = "APP_SORT_ORDER"
 private const val APP_FILTER_NO_ICON_NAME = "APP_FILTER_NO_ICON"
 private const val WATCH_CHECK_INTERVAL_NAME = "WATCH_CHECK_INTERVAL_MINUTES"
 private const val LAST_WATCH_CHECK_AT_NAME = "LAST_WATCH_CHECK_AT"
+private const val AUTO_BACKUP_INTERVAL_NAME = "AUTO_BACKUP_INTERVAL_HOURS"
+private const val AUTO_BACKUP_TREE_URI_NAME = "AUTO_BACKUP_TREE_URI"
+private const val LAST_AUTO_BACKUP_AT_NAME = "LAST_AUTO_BACKUP_AT"
 private const val FALLBACK_SOURCE_NAME = "FALLBACK_SOURCE"
 private const val BUILT_PRIMARY_SOURCE_NAME = "BUILT_PRIMARY_SOURCE"
 private const val BUILT_PRIMARY_ICON_PACK_NAME = "BUILT_PRIMARY_ICON_PACK"
@@ -62,6 +65,8 @@ private const val BUILT_PRIMARY_ICON_PACK_NAME = "BUILT_PRIMARY_ICON_PACK"
 // lower it (min 15, WorkManager's periodic floor) to test the watcher quickly.
 const val WATCH_CHECK_INTERVAL_DEFAULT = 24 * 60
 const val WATCH_CHECK_INTERVAL_MIN = 15
+const val AUTO_BACKUP_INTERVAL_OFF = 0
+val AUTO_BACKUP_INTERVAL_OPTIONS = listOf(0, 24, 72, 168)
 
 val DARK_MODE_DEFAULT = DarkMode.FOLLOW_SYSTEM
 val INSTALL_METHOD_DEFAULT = InstallMethod.SYSTEM
@@ -176,6 +181,9 @@ val AppSortOrderKey = intPreferencesKey(APP_SORT_ORDER_NAME)
 val AppFilterNoIconKey = booleanPreferencesKey(APP_FILTER_NO_ICON_NAME)
 val WatchCheckIntervalKey = intPreferencesKey(WATCH_CHECK_INTERVAL_NAME)
 val LastWatchCheckAtKey = longPreferencesKey(LAST_WATCH_CHECK_AT_NAME)
+val AutoBackupIntervalKey = intPreferencesKey(AUTO_BACKUP_INTERVAL_NAME)
+val AutoBackupTreeUriKey = stringPreferencesKey(AUTO_BACKUP_TREE_URI_NAME)
+val LastAutoBackupAtKey = longPreferencesKey(LAST_AUTO_BACKUP_AT_NAME)
 
 // Which profile's icons/preferences are active. Profiles snapshot/restore the keys below.
 val ActiveProfileIdKey = longPreferencesKey("ACTIVE_PROFILE_ID")
@@ -484,6 +492,9 @@ fun Preferences.getLongValue(key: Preferences.Key<Long>, default: Long = 0L): Lo
 
 fun normalizeWatchCheckInterval(minutes: Int): Int =
     minutes.takeIf { it >= WATCH_CHECK_INTERVAL_MIN } ?: WATCH_CHECK_INTERVAL_DEFAULT
+
+fun normalizeAutoBackupInterval(hours: Int): Int =
+    hours.takeIf(AUTO_BACKUP_INTERVAL_OPTIONS::contains) ?: AUTO_BACKUP_INTERVAL_OFF
 
 fun normalizeOutlineWidth(width: Int): Int = width.coerceIn(OUTLINE_WIDTH_MIN, OUTLINE_WIDTH_MAX)
 
