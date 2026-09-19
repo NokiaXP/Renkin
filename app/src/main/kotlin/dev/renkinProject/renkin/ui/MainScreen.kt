@@ -518,7 +518,9 @@ fun MainColumn(iconPacks: List<IconPack>) {
     if (viewModel.whatsNewVisible) {
         WhatsNewDialog(viewModel::dismissWhatsNew)
     } else if (pendingSuggestion != null) {
-        WatchApplyModal(pendingSuggestion) { viewModel.clearPendingWatchSuggestion() }
+        WatchApplyModal(pendingSuggestion) {
+            viewModel.clearPendingWatchSuggestion(pendingSuggestion)
+        }
     }
 
     // The replace-everything confirmation for a picked full-backup file. Hosted here (not in

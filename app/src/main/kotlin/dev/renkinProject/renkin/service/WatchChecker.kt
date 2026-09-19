@@ -76,15 +76,28 @@ class WatchChecker(
         val profileId: Long
     )
 
-    suspend fun runCheck(): List<FiredSuggestion> = withContext(Dispatchers.Default) {
-        checkMutex.withLock { runCheckLocked() }
-    }
+    suspend fun runCheck(refreshCompletedSuggestions: Boolean = false): List<FiredSuggestion> =
+        withContext(Dispatchers.Default) {
+            checkMutex.withLock { runCheckLocked(refreshCompletedSuggestions) }
+        }
 
-    private suspend fun runCheckLocked(): List<FiredSuggestion> {
+    private suspend fun runCheckLocked(includeCompletedSuggestions: Boolean): List<FiredSuggestion> {
         val fired = mutableListOf<FiredSuggestion>()
         val installedPacks = watchablePacks()
         val installedAppsByPackage = installedAppCatalog.getAllInstalledApplications()
             .groupBy { it.packageName }
+        if (includeCompletedSuggestions) {
+            fired += refreshCompletedSuggestions(installedPacks, installedAppsByPackage)
+        }
+        fired += checkActiveRules(installedPacks, installedAppsByPackage)
+        return fired
+    }
+
+    private suspend fun checkActiveRules(
+        installedPacks: Map<String, IconPack>,
+        installedAppsByPackage: Map<String, List<InstalledApplication>>
+    ): List<FiredSuggestion> {
+        val fired = mutableListOf<FiredSuggestion>()
 
         for (rule in repo.getActiveRules()) {
             val packPackages = if (rule.rule.watchAllPacks) {
@@ -178,6 +191,53 @@ class WatchChecker(
         }
 
         return fired
+    }
+
+    private suspend fun refreshCompletedSuggestions(
+        installedPacks: Map<String, IconPack>,
+        installedAppsByPackage: Map<String, List<InstalledApplication>>
+    ): List<FiredSuggestion> {
+        val refreshed = mutableListOf<FiredSuggestion>()
+        for (rule in repo.getCompletedRules()) {
+            for (suggestion in rule.suggestions) {
+                val installedApp = installedAppsByPackage[suggestion.packageName]
+                    .orEmpty()
+                    .firstOrNull { it.activityName == suggestion.activityName }
+                    ?: continue
+                val storedCandidates = repo.getCandidates(suggestion.id)
+                val currentCandidates = storedCandidates.map { stored ->
+                    if (installedPacks[stored.iconPackPackage] == null) {
+                        return@map CandidateInput(
+                            stored.iconPackPackage,
+                            stored.drawableName,
+                            stored.iconHash
+                        )
+                    }
+                    val resolved = resolveIcon(stored.iconPackPackage, installedApp)
+                    val drawableName = resolved?.first
+                    val hash = resolved?.second
+                    if (drawableName != null && hash != null) {
+                        CandidateInput(stored.iconPackPackage, drawableName, hash)
+                    } else {
+                        CandidateInput(stored.iconPackPackage, stored.drawableName, stored.iconHash)
+                    }
+                }
+                val changed = currentCandidates.zip(storedCandidates).any { (current, stored) ->
+                    current.iconPackPackage != stored.iconPackPackage ||
+                        current.drawableName != stored.drawableName ||
+                        current.iconHash != stored.iconHash
+                }
+                if (!changed || !repo.replaceCandidates(suggestion.id, currentCandidates)) continue
+                refreshed += FiredSuggestion(
+                    suggestionId = suggestion.id,
+                    packageName = suggestion.packageName,
+                    activityName = suggestion.activityName,
+                    packPackages = currentCandidates.map { it.iconPackPackage },
+                    profileId = rule.rule.profileId
+                )
+            }
+        }
+        return refreshed
     }
 
     /**

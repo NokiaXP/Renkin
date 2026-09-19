@@ -154,7 +154,7 @@ class WatchViewModel @Inject constructor(
             isChecking = true
             // finally keeps the spinner from sticking when the checker throws.
             val fired = try {
-                WatchChecker(getApplication()).runCheck()
+                WatchChecker(getApplication()).runCheck(refreshCompletedSuggestions = true)
             } finally {
                 isChecking = false
             }

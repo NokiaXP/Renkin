@@ -309,7 +309,9 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun clearPendingWatchSuggestion() { pendingWatchSuggestionId = null }
+    fun clearPendingWatchSuggestion(expectedId: Long) {
+        if (pendingWatchSuggestionId == expectedId) pendingWatchSuggestionId = null
+    }
 
     // Label of an external icon pack installed while the app was open; non-null drives a
     // dialog prompting to reload so the new pack appears among the available sources.

@@ -37,6 +37,10 @@ interface WatchDao {
     suspend fun getActiveRules(): List<RuleWithDetails>
 
     @Transaction
+    @Query("SELECT * FROM watch_rule WHERE completed = 1")
+    suspend fun getCompletedRules(): List<RuleWithDetails>
+
+    @Transaction
     @Query("SELECT * FROM watch_rule WHERE id = :ruleId")
     suspend fun getRuleWithDetails(ruleId: Long): RuleWithDetails?
 

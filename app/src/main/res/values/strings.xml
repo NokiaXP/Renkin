@@ -419,8 +419,8 @@
     <string name="deleteAllCompleted">Delete all completed</string>
     <string name="deleteAllCompletedTitle">Delete all completed?</string>
     <string name="deleteAllCompletedText">All completed watch suggestions will be removed.</string>
-    <string name="watchRefreshNone">No new icons found</string>
-    <string name="watchRefreshFound">%d new icon(s) found</string>
+    <string name="watchRefreshNone">No icon updates found</string>
+    <string name="watchRefreshFound">Icon updates found: %d</string>
     <string name="iconAvailableChannelName">New icon available</string>
     <string name="iconAvailableChannelDescription">A watched icon pack published a new icon for a watched app</string>
     <string name="iconAvailableTitle">New icon for %s</string>

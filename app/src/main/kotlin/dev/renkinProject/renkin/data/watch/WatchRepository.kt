@@ -23,6 +23,8 @@ class WatchRepository(private val db: WatchDatabase) {
 
     suspend fun getActiveRules(): List<RuleWithDetails> = dao.getActiveRules()
 
+    suspend fun getCompletedRules(): List<RuleWithDetails> = dao.getCompletedRules()
+
     /**
      * Creates or updates an active rule and replaces its baseline in one transaction. Icon
      * resolution happens before this call, so the checker can never observe a half-saved rule.
@@ -169,6 +171,20 @@ class WatchRepository(private val db: WatchDatabase) {
     suspend fun getSuggestion(id: Long): IconSuggestion? = dao.getSuggestion(id)
 
     suspend fun getCandidates(suggestionId: Long): List<IconSuggestionCandidate> = dao.getCandidates(suggestionId)
+
+    suspend fun replaceCandidates(
+        suggestionId: Long,
+        candidates: List<CandidateInput>
+    ): Boolean = db.withTransaction {
+        if (dao.getSuggestion(suggestionId) == null || candidates.isEmpty()) {
+            return@withTransaction false
+        }
+        dao.deleteCandidates(suggestionId)
+        dao.insertCandidates(candidates.map {
+            IconSuggestionCandidate(suggestionId, it.iconPackPackage, it.drawableName, it.iconHash)
+        })
+        true
+    }
 
     suspend fun suggestionCount(): Int = dao.suggestionCount()
 
