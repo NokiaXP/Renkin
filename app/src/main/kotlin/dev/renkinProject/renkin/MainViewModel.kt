@@ -26,6 +26,7 @@ import dev.renkinProject.renkin.apk.IconLockManager
 import dev.renkinProject.renkin.apk.InstallerCatalog
 import dev.renkinProject.renkin.apk.InstallerOption
 import dev.renkinProject.renkin.apk.InstallerSelection
+import dev.renkinProject.renkin.apk.ShizukuSupport
 import dev.renkinProject.renkin.apk.installerSelection
 import dev.renkinProject.renkin.data.IconPack
 import dev.renkinProject.renkin.data.InstalledApplication
@@ -467,6 +468,28 @@ class MainViewModel @Inject constructor(
 
     suspend fun installerLabel(selection: InstallerSelection): String? = withContext(Dispatchers.IO) {
         installerCatalog.labelFor(selection)
+    }
+
+    var shizukuState by mutableStateOf(ShizukuSupport.state(application))
+        private set
+
+    // Binder and permission callbacks cover Shizuku starting, stopping and answering the prompt.
+    private val shizukuObservation = ShizukuSupport.observe(::refreshShizukuState)
+
+    // Installing Shizuku sends no callback, so the picker refreshes whenever it is shown.
+    fun refreshShizukuState() {
+        shizukuState = ShizukuSupport.state(getApplication<Application>())
+    }
+
+    fun requestShizukuPermission() {
+        if (!ShizukuSupport.requestPermission(getApplication<Application>())) refreshShizukuState()
+    }
+
+    fun openShizukuManager(): Boolean = ShizukuSupport.openManager(getApplication<Application>())
+
+    override fun onCleared() {
+        shizukuObservation.close()
+        super.onCleared()
     }
 
     fun hideProfileShareWarning() = updatePreferences {
