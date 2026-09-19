@@ -30,9 +30,9 @@ Watching should be **event-driven**: only look when a watched pack actually
     it later).
   - The original rule keeps watching its remaining apps; if it had only that one
     app, the rule itself becomes "completed".
-- **Completed** rules are **not checked again** and persist until the user **deletes**
-  them. Ignoring a notification does **not** delete anything — it stays as a completed
-  rule.
+- **Completed** rules are excluded from periodic checks and persist until the user **deletes**
+  them. A manual refresh re-resolves their pending candidates so an icon-pack update cannot leave
+  an apply dialog permanently stale. Ignoring a notification does **not** delete anything.
 - The **home-screen bell shows a badge** = number of completed (undeleted) rules,
   e.g. `1` means one rule is done and awaiting the user.
 
@@ -225,7 +225,8 @@ WorkManager periodic tick   (optional fast-path: PACKAGE_REPLACED → expedited 
         │            delete the completed rule + suggestion. (NO auto-rebuild.)
         └─ cancel  → keep the completed rule + suggestion (still applyable later)
 
-  Completed rules are never re-checked; user deletes them manually → badge decrements.
+  Periodic checks skip completed rules. A manual refresh updates their stored candidates;
+  user deletes them manually → badge decrements.
 ```
 
 ## 6. Manifest / permissions / deps
@@ -260,10 +261,11 @@ WorkManager periodic tick   (optional fast-path: PACKAGE_REPLACED → expedited 
 1. **"New icon" = content hash** of the resolved drawable bitmap (not just name).
 2. **After applying: store only**, no auto-rebuild. Show a **toast** prompting the
    user to press **Build** to regenerate the pack with the new icon.
-3. **Ignoring a suggestion** does not re-notify: the app is already split into a
-   **completed** rule at suggestion time, so it's never re-checked. The completed
-   rule lingers (applyable later) and is counted by the **bell badge** until the user
-   applies or deletes it. Applying consumes the completed rule; closing the modal does not.
+3. **Ignoring a suggestion** does not re-notify during periodic checks: the app is already split
+   into a **completed** rule at suggestion time. Manual refresh still updates its pending icon if
+   the source pack changed. The completed rule lingers (applyable later) and is counted by the
+   **bell badge** until the user applies or deletes it. Applying consumes the completed rule;
+   closing the modal does not.
 4. **Multiple packs → one grouped notification**; the user **picks the pack in the
    modal** (candidates list).
 5. **Engine: WorkManager only** for v1 (most robust + easiest to extend). Event
