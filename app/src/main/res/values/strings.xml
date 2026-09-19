@@ -667,4 +667,42 @@
     <string name="introInfoText">Open About to find Renkin on GitHub, report a problem, or suggest an improvement.</string>
     <string name="onboardingNext">Next</string>
     <string name="showIntro">Show intro</string>
+
+    <!-- What's new -->
+    <string name="whatsNewTitle">What’s new</string>
+    <string name="whatsNewVersion">Version %1$s</string>
+    <string name="whatsNewLatestCurrent">Latest: %1$s · Current: %2$s</string>
+    <string name="whatsNewReleaseVersion">v%1$s</string>
+    <string name="whatsNewSectionNew">New</string>
+    <string name="whatsNewSectionChanged">Changed</string>
+    <string name="whatsNewSectionFixed">Fixed</string>
+    <string name="whatsNewAdaptiveIcons">**Adaptive icons:** Keep their real layers when imported from an icon pack.</string>
+    <string name="whatsNewShadow">**Shadows:** Add a soft shadow, hard shadow or glow.</string>
+    <string name="whatsNewColorize">**Colours:** Use gradients, lighter blends and reusable presets.</string>
+    <string name="whatsNewWatch">**Icon watch:** Apply a new icon straight from its notification.</string>
+    <string name="whatsNewIntro">**Guided tour:** Learn the main controls step by step.</string>
+    <string name="whatsNewInstallFixes">**Installation:** More reliable pack installation with clearer errors.</string>
+    <string name="whatsNewGlobalStyle">**Global Style:** A clearer editor with live previews and target controls.</string>
+    <string name="whatsNewModifierPresets">**Modifier presets:** Save and reuse your favourite adjustments.</string>
+    <string name="whatsNewBackgroundBrushes">**Background brushes:** Erase or restore areas with pinch zoom.</string>
+    <string name="whatsNewDuplicatePicker">**Picker stability:** Fixed a crash caused by duplicate items.</string>
+    <string name="whatsNewGradients">**Gradients:** Use them for icons, backgrounds, shapes and outlines.</string>
+    <string name="whatsNewSegments">**Colour segments:** Recolour separate parts of one icon.</string>
+    <string name="whatsNewBuildChanges">**Build changes:** See what changed and undo icon resets or refreshes.</string>
+    <string name="whatsNewQuickActions">**Quick actions:** Long-press an app to refresh, watch or reset it.</string>
+    <string name="whatsNewWideLayouts">**Large screens:** Improved layouts for tablets and landscape.</string>
+    <string name="whatsNewGlobalModifiers">**Global modifiers:** Apply a style by icon source with a live wallpaper preview.</string>
+    <string name="whatsNewOnlineIcons">**Online icons:** Search and import artwork from Iconify.</string>
+    <string name="whatsNewMaterialOptions">**More styles:** Added Material You, monochrome and inverted colours.</string>
+    <string name="whatsNewResponsiveLayouts">**Responsive layout:** Better support for tablets, foldables and landscape.</string>
+    <string name="whatsNewSharingLocks">**Pack protection:** Shared icons unlock only when their source pack is installed.</string>
+    <string name="whatsNewOutline">**Outlines:** Add or recolour an outline for one icon or the whole pack.</string>
+    <string name="whatsNewFirstIntro">**Welcome guide:** A first-run introduction explains the app.</string>
+    <string name="whatsNewLauncherSupport">**Launcher support:** Packs now work with more legacy launchers.</string>
+    <string name="whatsNewLawniconsFix">**Lawnicons:** Fixed invisible icons and improved preview quality.</string>
+    <string name="whatsNewPaidPackSharing">**Safer sharing:** Paid-pack artwork stays locked until its pack is installed.</string>
+    <string name="whatsNewProfiles">**Profiles:** Share a setup as a Renkin file.</string>
+    <string name="whatsNewBackup">**Backup:** Save and restore the whole app in one file.</string>
+    <string name="whatsNewTextSvg">**More sources:** Create text icons or import SVG artwork.</string>
+    <string name="whatsNewMaterialShapes">**Material You shapes:** Crop icons or place them on a colour plate.</string>
 </resources>
