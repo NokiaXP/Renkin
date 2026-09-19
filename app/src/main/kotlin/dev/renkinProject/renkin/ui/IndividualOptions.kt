@@ -68,6 +68,7 @@ import dev.renkinProject.renkin.packages.supportDynamicColors
 import dev.renkinProject.renkin.drawable.ResourceDrawable
 import dev.renkinProject.renkin.drawable.toSafeBitmapOrNull
 import dev.renkinProject.renkin.icon.creator.GenerationOptions
+import dev.renkinProject.renkin.icon.creator.hasVisibleShadow
 import dev.renkinProject.renkin.icon.creator.ApplicationIconVariant
 import dev.renkinProject.renkin.drawable.AdaptiveIconPackDrawable
 import dev.renkinProject.renkin.icon.creator.IconShape
@@ -295,7 +296,8 @@ internal class IconDraftState(initialIcon: IconPackDrawable?) {
             options.primaryImageEdit == ImageEdit.NONE && options.iconScale == 1f
                 && options.iconOffsetX == 0f && options.iconOffsetY == 0f
                 && options.iconShape == IconShape.NONE
-                && options.outlineMode == OutlineMode.NONE -> base
+                && options.outlineMode == OutlineMode.NONE
+                && !options.hasVisibleShadow() -> base
             else -> trackGeneration { builder.applyModifier(base, options) }
         }
         if (generation == vectorGeneration) modifiedVector = generated

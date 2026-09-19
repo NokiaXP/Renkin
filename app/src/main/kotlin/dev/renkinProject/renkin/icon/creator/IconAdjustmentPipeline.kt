@@ -28,9 +28,10 @@ internal class IconAdjustmentPipeline(
         val offset = options.iconOffsetX != 0f || options.iconOffsetY != 0f
         val shaped = options.iconShape != IconShape.NONE
         val outlined = options.outlineMode != OutlineMode.NONE
-        if (!offset && options.iconScale == 1f && !shaped && !outlined) return icon
+        val shadowed = options.hasVisibleShadow()
+        if (!offset && options.iconScale == 1f && !shaped && !outlined && !shadowed) return icon
 
-        if (icon is AdaptiveIconPackDrawable && !shaped && !outlined) {
+        if (icon is AdaptiveIconPackDrawable && !shaped && !outlined && !shadowed) {
             val layerOptions = options.copy(
                 iconOffsetX = options.iconOffsetX / ADAPTIVE_ICON_SCALE,
                 iconOffsetY = options.iconOffsetY / ADAPTIVE_ICON_SCALE
@@ -45,13 +46,13 @@ internal class IconAdjustmentPipeline(
             options.iconOffsetX,
             options.iconOffsetY
         )
-        if (vectorAdjusted != null && !shaped && !outlined) return vectorAdjusted
+        if (vectorAdjusted != null && !shaped && !outlined && !shadowed) return vectorAdjusted
 
         var bitmap = vectorAdjusted?.toModifierBitmap() ?: icon.toBitmap()
         if (bitmap.width <= 0 || bitmap.height <= 0) return icon
 
         val source = icon as? BitmapIconDrawable
-        val previewScaleToBake = previewScaleToBakeForShape(icon, shaped)
+        val previewScaleToBake = previewScaleToBakeForShape(icon, shaped || shadowed)
         if (previewScaleToBake != 1f) {
             bitmap = bitmap.scaleFromCenter(previewScaleToBake)
         }
@@ -91,12 +92,24 @@ internal class IconAdjustmentPipeline(
         if (shaped) {
             bitmap = applyShape(bitmap)
         }
+        if (shadowed) {
+            bitmap = IconShadow.apply(
+                source = bitmap,
+                blur = options.shadowBlur,
+                distance = options.shadowDistance,
+                angle = options.shadowAngle,
+                allDirections = options.shadowAllDirections,
+                color = options.shadowColor,
+                style = options.shadowStyle,
+                opacity = options.shadowOpacity
+            )
+        }
 
         return BitmapIconDrawable(
             resources,
             bitmap,
-            exportAsAdaptiveIcon = if (shaped) false else source?.isAdaptiveIcon() ?: false,
-            previewScale = if (shaped) 1f else source?.previewScale ?: 1f
+            exportAsAdaptiveIcon = if (shaped || shadowed) false else source?.isAdaptiveIcon() ?: false,
+            previewScale = if (shaped || shadowed) 1f else source?.previewScale ?: 1f
         )
     }
 

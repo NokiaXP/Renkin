@@ -133,8 +133,9 @@ data class GenerationOptions(
     // the whole icon is colourized with the options above, which is what every other surface asks
     // for. Only ever set per app; the pack-wide surfaces never populate it.
     val colorizeLayers: List<SegmentLayer> = emptyList(),
-    // Icon shape applied as the LAST step: NONE leaves the icon untouched; otherwise the icon
-    // is cropped into the shape (the default — most icons are full-bleed) or laid on a
+    // Icon shape applied after outline and before the optional shadow: NONE leaves the icon
+    // untouched; otherwise the icon is cropped into the shape (the default — most icons are
+    // full-bleed) or laid on a
     // [bgColor]-filled shape plate. [iconShapeScale] sizes the SHAPE itself (the icon stays
     // as-is — that's [iconScale]): smaller crops deeper, larger clips just the corners.
     val iconShape: IconShape = IconShape.NONE,
@@ -151,6 +152,16 @@ data class GenerationOptions(
     // Painted areas where the outline step must not apply (the eraser tool). Alpha mask in
     // normalised icon space; null = outline everywhere. Session-only — never persisted.
     val outlineEraseMask: android.graphics.Bitmap? = null,
+    // A shadow follows the final silhouette. It is intentionally per-icon: adaptive masks clip
+    // outside effects, so enabling it produces a faithful flattened fallback for that icon.
+    val shadowEnabled: Boolean = false,
+    val shadowBlur: Float = 12f,
+    val shadowDistance: Float = 7f,
+    val shadowAngle: Float = 135f,
+    val shadowAllDirections: Boolean = false,
+    val shadowColor: Int = android.graphics.Color.BLACK,
+    val shadowStyle: ColorizerStyle? = null,
+    val shadowOpacity: Float = 0.35f,
     // Ordered hand corrections to background removal. Session-only, like the outline eraser.
     val backgroundBrushOperations: List<BackgroundBrushOperation> = emptyList(),
     // Text-icon options: the string rendered for TextType.CUSTOM (empty falls back to the app
@@ -346,9 +357,23 @@ fun GenerationOptions.backgroundShader(width: Int, height: Int): android.graphic
 
 fun GenerationOptions.hasVisibleModifierEffect(): Boolean =
     primaryImageEdit != ImageEdit.NONE || iconScale != 1f ||
-        iconShape != IconShape.NONE || outlineMode != OutlineMode.NONE ||
+        iconShape != IconShape.NONE || outlineMode != OutlineMode.NONE || hasVisibleShadow() ||
         materialYouPackForeground != null || materialYouPackBackground != null ||
         materialYouPackStrokeScale != 1f
+
+fun GenerationOptions.hasVisibleShadow(): Boolean =
+    shadowEnabled && shadowOpacity > 0f && shadowHasVisibleColor() &&
+        (shadowBlur > 0f || shadowDistance > 0f)
+
+private fun GenerationOptions.shadowHasVisibleColor(): Boolean {
+    val style = shadowStyle ?: return android.graphics.Color.alpha(shadowColor) > 0
+    val colors = if (style.mode == ColorizerMode.GRADIENT) {
+        style.allGradientColors
+    } else {
+        listOf(style.firstColor)
+    }
+    return colors.any { android.graphics.Color.alpha(it) > 0 }
+}
 
 /** Letter-case transform for text icons (per-app option; not persisted globally). */
 enum class TextCase { AS_IS, UPPER, LOWER }
