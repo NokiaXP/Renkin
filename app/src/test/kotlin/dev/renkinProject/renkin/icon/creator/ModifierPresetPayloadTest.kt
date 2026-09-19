@@ -34,7 +34,7 @@ class ModifierPresetPayloadTest {
             gradientStops = listOf(Color.BLUE, Color.GREEN),
             gradientPositions = listOf(0f, 0.4f, 1f),
             gradientAngle = 35f,
-            flat = true,
+            lighten = true,
             monochrome = true,
             inverse = true
         )

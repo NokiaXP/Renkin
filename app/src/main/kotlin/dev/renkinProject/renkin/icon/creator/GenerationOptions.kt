@@ -42,6 +42,7 @@ import dev.renkinProject.renkin.data.getIntValue
 import dev.renkinProject.renkin.data.getStringValue
 import dev.renkinProject.renkin.data.normalizeOutlineWidth
 import dev.renkinProject.renkin.data.GlobalColorizeFlatKey
+import dev.renkinProject.renkin.data.GlobalColorizeLightenKey
 import dev.renkinProject.renkin.data.GlobalColorizeInverseKey
 import dev.renkinProject.renkin.data.GlobalColorizeKey
 import dev.renkinProject.renkin.data.GlobalColorizeMonochromeKey
@@ -108,6 +109,8 @@ data class GenerationOptions(
     // Colorize as a flat fill (SRC_IN) rather than the default multiply blend, so the picked colour
     // replaces the icon's own colours instead of mixing with them. Per-icon Modifier-tab option.
     val colorizeFlat: Boolean = false,
+    // SCREEN blend raises dark channels toward the picked colour without clipping like raw PLUS.
+    val colorizeLighten: Boolean = false,
     // Alternative Colorize results: grayscale, plus optional inversion of either grayscale or RGB.
     val colorizeMonochrome: Boolean = false,
     val colorizeInverse: Boolean = false,
@@ -253,6 +256,8 @@ fun globalModifierOptions(preferences: Preferences): GenerationOptions {
         GlobalColorizerStyleKeys, androidx.compose.ui.graphics.Color.White
     ).copy(
         flat = preferences.getBooleanValue(GlobalColorizeFlatKey),
+        lighten = preferences.getBooleanValue(GlobalColorizeLightenKey) &&
+            !preferences.getBooleanValue(GlobalColorizeFlatKey),
         monochrome = preferences.getBooleanValue(GlobalColorizeMonochromeKey),
         inverse = preferences.getBooleanValue(GlobalColorizeInverseKey)
     )
@@ -278,6 +283,7 @@ fun globalModifierOptions(preferences: Preferences): GenerationOptions {
         themed = false,
         override = true,
         colorizeFlat = colorizerStyle.flat,
+        colorizeLighten = colorizerStyle.lighten,
         colorizeMonochrome = colorizerStyle.monochrome,
         colorizeInverse = colorizerStyle.inverse,
         colorizerMode = colorizerStyle.mode,

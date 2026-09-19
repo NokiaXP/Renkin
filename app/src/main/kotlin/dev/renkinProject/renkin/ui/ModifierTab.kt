@@ -116,6 +116,7 @@ internal class AdjustmentState {
     // Colorize as a flat fill (SRC_IN) instead of the default multiply blend, so the picked
     // colour lands exactly — a green icon tinted blue no longer muddies to a green/blue mix.
     var colorizeFlat by mutableStateOf(false)
+    var colorizeLighten by mutableStateOf(false)
     var colorizeMonochrome by mutableStateOf(false)
     var colorizeInverse by mutableStateOf(false)
     var colorizerMode by mutableStateOf(ColorizerMode.SINGLE_COLOR)
@@ -180,6 +181,7 @@ internal class AdjustmentState {
                     "iconOffsetX", it.iconOffsetX,
                     "iconOffsetY", it.iconOffsetY,
                     "colorizeFlat", it.colorizeFlat,
+                    "colorizeLighten", it.colorizeLighten,
                     "colorizeMonochrome", it.colorizeMonochrome,
                     "colorizeInverse", it.colorizeInverse,
                     "colorizerMode", it.colorizerMode.ordinal,
@@ -240,6 +242,7 @@ internal class AdjustmentState {
             iconOffsetX = saved["iconOffsetX"] as? Float ?: iconOffsetX
             iconOffsetY = saved["iconOffsetY"] as? Float ?: iconOffsetY
             colorizeFlat = saved["colorizeFlat"] as? Boolean ?: colorizeFlat
+            colorizeLighten = saved["colorizeLighten"] as? Boolean ?: colorizeLighten
             colorizeMonochrome = saved["colorizeMonochrome"] as? Boolean ?: colorizeMonochrome
             colorizeInverse = saved["colorizeInverse"] as? Boolean ?: colorizeInverse
             colorizerMode = ColorizerMode.entries.getOrElse(
@@ -602,6 +605,7 @@ internal fun ModifierTab(
                                             adjustments.colorizerGradientPositions,
                                         gradientAngle = adjustments.colorizerGradientAngle,
                                         flat = adjustments.colorizeFlat,
+                                        lighten = adjustments.colorizeLighten,
                                         monochrome = adjustments.colorizeMonochrome,
                                         inverse = adjustments.colorizeInverse
                                     )
@@ -629,6 +633,7 @@ internal fun ModifierTab(
                                                 adjustments.colorizerGradientAngle =
                                                     style.gradientAngle
                                                 adjustments.colorizeFlat = style.flat
+                                                adjustments.colorizeLighten = style.lighten
                                                 adjustments.colorizeMonochrome = style.monochrome
                                                 adjustments.colorizeInverse = style.inverse
                                                 colorizeSheetOpen = false

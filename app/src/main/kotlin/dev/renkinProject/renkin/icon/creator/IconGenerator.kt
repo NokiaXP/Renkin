@@ -97,9 +97,11 @@ class IconGenerator(
     // Colorize blend for bitmap icons: SRC_IN replaces the icon's colours with the picked one (flat
     // fill), MULTIPLY tints them (mixes with the original). Vectors always recolour flat regardless.
     private val colorizeMode
-        get() = if (options.colorizeFlat && !options.colorizeMonochrome) {
-            PorterDuff.Mode.SRC_IN
-        } else PorterDuff.Mode.MULTIPLY
+        get() = when {
+            options.colorizeFlat && !options.colorizeMonochrome -> PorterDuff.Mode.SRC_IN
+            options.colorizeLighten && !options.colorizeMonochrome -> PorterDuff.Mode.SCREEN
+            else -> PorterDuff.Mode.MULTIPLY
+        }
     fun generateIcon(application: PackageInfoStruct,
                      onUpdate: (application: PackageInfoStruct, icon: IconPackDrawable?, sourcePackName: String) -> Unit) {
         generateIcons(listOf(application)) { app, icon, _, source -> onUpdate(app, icon, source) }
@@ -884,6 +886,7 @@ class IconGenerator(
     private fun colorizeImage(bitmapIcon: Bitmap, parsedIcon: Drawable?, mode: PorterDuff.Mode): IconPackDrawable {
         // Segment layers are per-pixel, which the vector recolour path cannot express: bake.
         if (options.colorizeLayers.isNotEmpty() ||
+            options.colorizeLighten ||
             options.colorizerMode == ColorizerMode.GRADIENT ||
             options.colorizeMonochrome ||
             parsedIcon == null
