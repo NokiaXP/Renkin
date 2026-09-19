@@ -39,6 +39,7 @@ import dev.renkinProject.renkin.data.InstallMethod
 import dev.renkinProject.renkin.data.InstallMethodKey
 import dev.renkinProject.renkin.data.ExternalInstallerComponentKey
 import dev.renkinProject.renkin.data.AskInstallerEveryTimeKey
+import dev.renkinProject.renkin.data.InstallerChoiceConfirmedKey
 import dev.renkinProject.renkin.data.HideProfileShareWarningKey
 import dev.renkinProject.renkin.data.OnboardingSeenKey
 import dev.renkinProject.renkin.data.LastSeenWhatsNewVersionKey
@@ -488,8 +489,13 @@ class MainViewModel @Inject constructor(
     }
 
     fun setInstallMethod(method: InstallMethod, externalComponent: String = "") = updatePreferences {
-        setEnumValue(InstallMethodKey, method)
-        setStringValue(ExternalInstallerComponentKey, externalComponent)
+        persistInstallerSelection(InstallerSelection(method, externalComponent))
+    }
+
+    private suspend fun DataStore<Preferences>.persistInstallerSelection(selection: InstallerSelection) {
+        setEnumValue(InstallMethodKey, selection.method)
+        setStringValue(ExternalInstallerComponentKey, selection.externalComponent)
+        setBooleanValue(InstallerChoiceConfirmedKey, true)
     }
 
     fun setAskInstallerEveryTime(enabled: Boolean) = updatePreferences {
@@ -619,16 +625,22 @@ class MainViewModel @Inject constructor(
     }
 
     private var pendingInstallerSelection: PendingPackInstall? = null
-    var installerSelectionPending by mutableStateOf(false)
+    enum class InstallerPromptReason { FIRST_CHOICE, ASK_EVERY_TIME }
+
+    var installerPromptReason by mutableStateOf<InstallerPromptReason?>(null)
         private set
 
     fun confirmInstallerSelection(selection: InstallerSelection) {
         val pending = pendingInstallerSelection ?: return
+        val rememberSelection = installerPromptReason == InstallerPromptReason.FIRST_CHOICE
         pendingInstallerSelection = null
-        installerSelectionPending = false
+        installerPromptReason = null
         val selectedPending = pending.copy(selection = selection)
         viewModelScope.launch {
             try {
+                if (rememberSelection) {
+                    getApplication<Application>().dataStore.persistInstallerSelection(selection)
+                }
                 installBuiltPack(selectedPending)
             } catch (e: CancellationException) {
                 throw e
@@ -645,7 +657,7 @@ class MainViewModel @Inject constructor(
     fun dismissInstallerSelection() {
         val pending = pendingInstallerSelection ?: return
         pendingInstallerSelection = null
-        installerSelectionPending = false
+        installerPromptReason = null
         viewModelScope.launch { appProvider.finishWithoutInstallation(pending.pack) }
     }
 
@@ -671,9 +683,13 @@ class MainViewModel @Inject constructor(
                 val wasUpdate = isIconPackInstalled(pack.packageName)
                 val selection = preferences.installerSelection()
                 val pending = PendingPackInstall(pack, wasUpdate, pack.packLabel, selection)
-                if (preferences.getBooleanValue(AskInstallerEveryTimeKey)) {
+                val promptReason = installerPromptReason(
+                    askEveryTime = preferences.getBooleanValue(AskInstallerEveryTimeKey),
+                    choiceConfirmed = preferences.getBooleanValue(InstallerChoiceConfirmedKey)
+                )
+                if (promptReason != null) {
                     pendingInstallerSelection = pending
-                    installerSelectionPending = true
+                    installerPromptReason = promptReason
                     return@launch
                 }
                 installBuiltPack(pending)
@@ -1411,4 +1427,13 @@ class MainViewModel @Inject constructor(
     suspend fun dynamicClockDrawables(packPackageName: String): Set<String> =
         appProvider.dynamicClockDrawables(packPackageName)
 
+}
+
+internal fun installerPromptReason(
+    askEveryTime: Boolean,
+    choiceConfirmed: Boolean
+): MainViewModel.InstallerPromptReason? = when {
+    askEveryTime -> MainViewModel.InstallerPromptReason.ASK_EVERY_TIME
+    !choiceConfirmed -> MainViewModel.InstallerPromptReason.FIRST_CHOICE
+    else -> null
 }

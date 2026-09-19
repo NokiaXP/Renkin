@@ -127,6 +127,7 @@ fun InstallerPickerScreen(
 @Composable
 fun InstallerPromptDialog(
     selected: InstallerSelection,
+    explainSavedChoice: Boolean,
     onSelect: (InstallerSelection) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -149,6 +150,14 @@ fun InstallerPromptDialog(
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
                 )
+                if (explainSavedChoice) {
+                    Text(
+                        text = stringResource(R.string.installerFirstChoiceDescription),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
+                    )
+                }
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
