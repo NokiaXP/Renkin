@@ -557,10 +557,11 @@ fun OptionsDialog(
         outlineEraseMask = outlineEraseMask,
         backgroundBrushOperations = backgroundBrushOperations
     )
-    // Pack rows describe the source artwork, not the per-icon draft currently being edited.
-    // Keeping these options separate prevents a Material You slider from restyling every
-    // Lawnicons tile while the selected icon alone is regenerated below.
+    // Pack rows describe the source artwork, not its themed export. The launcher applies the
+    // adaptive viewport to themed output; applying that inset directly to these flat browser
+    // tiles made every candidate look half-sized until a modifier happened to flatten it.
     val browserOptions = generatingOptions.copy(
+        themed = false,
         materialYouPackForeground = null,
         materialYouPackBackground = null,
         materialYouPackStrokeScale = 1f,

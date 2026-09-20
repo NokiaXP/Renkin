@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
 import dev.renkinProject.renkin.extension.newArgbBitmap
 import dev.renkinProject.renkin.extension.getBytes
+import dev.renkinProject.renkin.extension.scaleFromCenter
 import dev.renkinProject.renkin.icon.creator.ColorizerStyle
 import dev.renkinProject.renkin.icon.parser.AdaptiveIconPayload
 
@@ -65,11 +66,18 @@ class AdaptiveIconPackDrawable internal constructor(
     val monochrome: Bitmap? get() = monochromePng?.let(::decodeLayer)
     val hasMonochrome: Boolean get() = monochromePng != null
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    private val preview by lazy { render(PREVIEW_SIZE) }
+    // The stored bitmaps are complete 108dp adaptive layers. Launchers zoom through their outer
+    // safe-zone padding, while an ordinary Compose BitmapPainter does not. Keep the export raster
+    // untouched, but apply the same 108/72 preview compensation used by BitmapIconDrawable so a
+    // freshly picked layered icon does not look tiny and then jump larger after a modifier.
+    private val rendered by lazy { render(PREVIEW_SIZE) }
+    private val preview by lazy { rendered.scaleFromCenter(ADAPTIVE_ICON_SCALE) }
 
     override fun isAdaptiveIcon(): Boolean = true
-    override fun toBitmap(): Bitmap = preview
+    override fun toBitmap(): Bitmap = rendered
     override fun toModifierBitmap(size: Int): Bitmap = render(size)
+    override fun previewBitmap(): Bitmap = preview
+    override fun toBrowserPreviewBitmap(): Bitmap = preview
     override fun toDbString(): String = AdaptiveIconPayload.encode(this)
     override fun getIntrinsicWidth(): Int = PREVIEW_SIZE
     override fun getIntrinsicHeight(): Int = PREVIEW_SIZE

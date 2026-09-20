@@ -22,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -163,8 +164,8 @@ fun AdvancedOptionsCard(iconPacks: List<IconPack>, onOpenGlobal: () -> Unit) {
  */
 @Composable
 fun AdvancedOptionsContent(iconPacks: List<IconPack>) {
-    val state = advancedOptionsState()
     val viewModel: OptionsViewModel = hiltViewModel()
+    val state = advancedOptionsState(viewModel)
 
     Column(Modifier.padding(bottom = 12.dp)) {
         // Users otherwise don't know these settings only take effect after a refresh.
@@ -220,9 +221,9 @@ private data class AdvancedOptionsState(
 }
 
 @Composable
-private fun advancedOptionsState(): AdvancedOptionsState {
+private fun advancedOptionsState(viewModel: OptionsViewModel): AdvancedOptionsState {
     val store = getPreferences()
-    val prefs = store.getPreferencesValue()
+    val prefs by viewModel.preferenceSnapshot.collectAsState()
     val iconColor = store.getIconColor()
     return AdvancedOptionsState(
         primarySource = prefs.getEnumValue(PrimarySourceKey, SOURCE_DEFAULT),

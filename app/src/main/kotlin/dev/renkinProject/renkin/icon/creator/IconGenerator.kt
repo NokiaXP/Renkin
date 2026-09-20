@@ -692,6 +692,10 @@ class IconGenerator(
                 if (preserveAdaptiveAppearance && !options.themed) {
                     renderAdaptivePackIcon(parsedIcon)?.let { return it }
                 }
+                // The bitmap path already unwraps and normalises the adaptive foreground. In
+                // themed mode, feeding the pack-authored foreground inset back into the standard
+                // themed inset applied it twice and made the comparison preview microscopic.
+                if (options.themed) return getDefaultBitmapIcon(bitmapIcon)
                 return getDefaultIcon(bitmapIcon, parsedIcon.foreground)
             }
         }
@@ -874,6 +878,9 @@ class IconGenerator(
     }
 
     private fun colorizeImage(bitmapIcon: Bitmap, parsedIcon: Drawable?, mode: PorterDuff.Mode): IconPackDrawable {
+        // Themed export owns one standard adaptive inset. Reusing an adaptive pack's parsed inset
+        // here stacks the source safe zone on top of it; use the already-normalised bitmap frame.
+        if (options.themed) return imageEditPipeline.colorize(bitmapIcon, mode)
         // Segment layers are per-pixel, which the vector recolour path cannot express: bake.
         if (options.colorizeLayers.isNotEmpty() ||
             options.colorizeLighten ||

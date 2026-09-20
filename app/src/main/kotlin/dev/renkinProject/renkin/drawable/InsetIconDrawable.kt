@@ -12,15 +12,17 @@ import android.os.Build
 import android.util.Base64
 import androidx.annotation.ChecksSdkIntAtLeast
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.graphics.toComposeRect
+import dev.renkinProject.renkin.extension.scaleFromCenter
 import dev.renkinProject.renkin.packages.PackageVersion
-import dev.renkinProject.renkin.vector.VectorEditor.Companion.inset
 import dev.renkinProject.renkin.vector.VectorExporter.Companion.toXmlFile
 import dev.renkinProject.renkin.xml.file.InsetXml
 
 class InsetIconDrawable(val drawable: Drawable, val dimensions: Rect, val fractions: RectF): IconPackDrawable() {
     private val insetDrawable: InsetDrawable
+    private val preview by lazy { toBitmap().scaleFromCenter(ADAPTIVE_ICON_SCALE) }
     val isFractionsNotEmpty = isFractions()
 
     init {
@@ -50,21 +52,15 @@ class InsetIconDrawable(val drawable: Drawable, val dimensions: Rect, val fracti
 
     @Composable
     override fun getPainter(): Painter {
-        return when (drawable) {
-            is ImageVectorDrawable -> {
-                val newVector = ImageVectorDrawable(drawable.toImageVector())
-                if (isFractionsNotEmpty) {
-                    newVector.inset(fractions)
-                } else {
-                    newVector.inset(dimensions.toComposeRect())
-                }
-                newVector.getPainter()
-            }
-            else -> {
-                BitmapIconDrawable(toBitmap()).getPainter()
-            }
-        }
+        // Insets in this model are adaptive-foreground geometry. The exported drawable must keep
+        // that padding, but a flat Compose painter otherwise shows the raw 108dp layer instead of
+        // the launcher's 72dp viewport. Rasterise once and apply only the preview compensation.
+        return BitmapPainter(previewBitmap().asImageBitmap())
     }
+
+    override fun previewBitmap(): Bitmap = preview
+
+    override fun toBrowserPreviewBitmap(): Bitmap = previewBitmap()
 
     override fun toBitmap(): Bitmap {
         // Vector-backed inset drawables commonly report no intrinsic dimensions (-1 x -1),

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.ui.graphics.Color
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -47,7 +48,9 @@ import javax.inject.Inject
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
@@ -62,6 +65,18 @@ class OptionsViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val preferences = context.dataStore
+
+    /**
+     * Activity-scoped preference snapshot for option UIs that can temporarily leave composition.
+     * A direct DataStore collect starts again from an empty snapshot whenever a sheet/dialog is
+     * reopened; that made enabled switches briefly appear off while their persisted value was
+     * still on. StateFlow retains the last real snapshot across those UI transitions.
+     */
+    val preferenceSnapshot = preferences.data.stateIn(
+        viewModelScope,
+        SharingStarted.Eagerly,
+        emptyPreferences()
+    )
 
     private val _gradientPresets = MutableStateFlow<List<GradientPreset>>(emptyList())
     val gradientPresets = _gradientPresets.asStateFlow()
