@@ -56,24 +56,37 @@ private data class WhatsNewSection(
     val changes: List<Int>
 )
 
-private val latestNew = listOf(
+private val previousNew = listOf(
     R.string.whatsNewShadow,
     R.string.whatsNewAutomaticBackups,
     R.string.whatsNewInstallerChoice,
     R.string.whatsNewIntro
 )
-private val latestChanged = listOf(
+private val previousChanged = listOf(
     R.string.whatsNewColorize
 )
-private val latestFixed = listOf(R.string.whatsNewWatch)
+private val previousFixed = listOf(R.string.whatsNewWatch)
 
 private val releaseHistory = listOf(
     WhatsNewRelease(
         LATEST_WHATS_NEW_VERSION_NAME,
         listOf(
-            WhatsNewSection(R.string.whatsNewSectionNew, latestNew),
-            WhatsNewSection(R.string.whatsNewSectionChanged, latestChanged),
-            WhatsNewSection(R.string.whatsNewSectionFixed, latestFixed)
+            WhatsNewSection(
+                R.string.whatsNewSectionFixed,
+                listOf(
+                    R.string.whatsNewThemedIconState,
+                    R.string.whatsNewSegmentPreview,
+                    R.string.whatsNewThemedPackPreview
+                )
+            )
+        )
+    ),
+    WhatsNewRelease(
+        "2026.09.01",
+        listOf(
+            WhatsNewSection(R.string.whatsNewSectionNew, previousNew),
+            WhatsNewSection(R.string.whatsNewSectionChanged, previousChanged),
+            WhatsNewSection(R.string.whatsNewSectionFixed, previousFixed)
         )
     ),
     WhatsNewRelease(
