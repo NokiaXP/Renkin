@@ -1,0 +1,3 @@
+• Fixed themed icons losing their state or changing size while browsing and editing icons from installed packs ([#11](https://github.com/renkindevbugs/Renkin/issues/11)).
+• Fixed blank Colorize segments previews and a crash caused by recycled bitmaps.
+• Pack preview now shows the adaptive background used by themed icons.
