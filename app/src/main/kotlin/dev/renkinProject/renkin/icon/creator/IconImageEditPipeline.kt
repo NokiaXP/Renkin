@@ -16,6 +16,7 @@ import dev.alembiconsProject.imagetracer.ImageTracer
 import dev.alembiconsProject.tgCannyEdgeCompose.CannyEdgeDetector
 import dev.alembiconsProject.tgCannyEdgeCompose.DetectionOptions
 import dev.renkinProject.renkin.data.ImageEdit
+import dev.renkinProject.renkin.drawable.ADAPTIVE_ICON_SCALE
 import dev.renkinProject.renkin.drawable.BitmapIconDrawable
 import dev.renkinProject.renkin.drawable.AdaptiveIconPackDrawable
 import dev.renkinProject.renkin.drawable.MaterialYouPackEditState
@@ -180,19 +181,28 @@ internal class IconImageEditPipeline(
 
     internal fun colorize(bitmap: Bitmap, mode: PorterDuff.Mode): IconPackDrawable {
         if (options.colorizeLayers.isNotEmpty()) {
-            return BitmapIconDrawable(
-                resources,
-                addBackground(applySegmentLayers(bitmap, options.colorizeLayers))
+            return colorizedBitmap(
+                addBackground(
+                    applySegmentLayers(themedColorizeSource(bitmap), options.colorizeLayers)
+                )
             )
         }
         if (options.colorizerMode == ColorizerMode.GRADIENT) {
-            return BitmapIconDrawable(resources, colorizeWithGradient(bitmap))
+            return colorizedBitmap(colorizeWithGradient(bitmap))
         }
         if (options.colorizeMonochrome) {
             return defaultBitmap(monochromeBitmap(bitmap, options.colorizeInverse))
         }
-        return BitmapIconDrawable(resources, colorizeBitmap(bitmap, mode))
+        return colorizedBitmap(colorizeBitmap(bitmap, mode))
     }
+
+    /** Themed pixels already contain their export inset; only their UI preview gets launcher zoom. */
+    private fun colorizedBitmap(bitmap: Bitmap): BitmapIconDrawable = BitmapIconDrawable(
+        resources,
+        bitmap,
+        exportAsAdaptiveIcon = options.themed,
+        previewScale = if (options.themed) ADAPTIVE_ICON_SCALE else 1f
+    )
 
     internal fun colorizeVector(vector: ImageVectorDrawable): IconPackDrawable {
         if (options.colorizeLighten) return colorize(vector.toBitmap(), options.colorizeBlendMode)
@@ -250,16 +260,7 @@ internal class IconImageEditPipeline(
     }
 
     private fun colorizeBitmap(icon: Bitmap, mode: PorterDuff.Mode): Bitmap {
-        val source = if (options.themed) {
-            icon.emptyLike().also { scaled ->
-                Canvas(scaled).apply {
-                    scale(0.5f, 0.5f, icon.width * 0.5f, icon.height * 0.5f)
-                    drawBitmap(icon, 0f, 0f, Paint(Paint.FILTER_BITMAP_FLAG))
-                }
-            }
-        } else {
-            icon
-        }
+        val source = themedColorizeSource(icon)
         val coloredIcon = if (mode == PorterDuff.Mode.SCREEN) {
             screenColorizeBitmap(source, options.color)
         } else {
@@ -275,6 +276,16 @@ internal class IconImageEditPipeline(
         if (source !== icon) source.recycle()
         val result = addBackground(coloredIcon)
         return if (options.colorizeInverse) invertBitmapColors(result) else result
+    }
+
+    private fun themedColorizeSource(icon: Bitmap): Bitmap {
+        if (!options.themed) return icon
+        return icon.emptyLike().also { scaled ->
+            Canvas(scaled).apply {
+                scale(0.5f, 0.5f, icon.width * 0.5f, icon.height * 0.5f)
+                drawBitmap(icon, 0f, 0f, Paint(Paint.FILTER_BITMAP_FLAG))
+            }
+        }
     }
 
     private fun colorizeWithGradient(icon: Bitmap): Bitmap {
@@ -370,7 +381,6 @@ internal class IconImageEditPipeline(
             )
             drawBitmap(image, 0f, 0f, null)
         }
-        image.recycle()
         return result
     }
 

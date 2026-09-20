@@ -117,6 +117,7 @@ import dev.renkinProject.renkin.apk.installerSelection
 import androidx.hilt.navigation.compose.hiltViewModel
 import dev.renkinProject.renkin.GlobalOptionsActivity
 import dev.renkinProject.renkin.MainViewModel
+import dev.renkinProject.renkin.OptionsViewModel
 import dev.renkinProject.renkin.WatchViewModel
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -596,13 +597,15 @@ fun ApplicationList(
     onProblemFilterToggle: ((AppProblemFilter) -> Unit)? = null
 ) {
     val viewModel: MainViewModel = hiltViewModel()
+    val optionsViewModel: OptionsViewModel = hiltViewModel()
     val applications = viewModel.applicationList
 
     // Read preferences once for the whole list — a DataStore subscription per row
     // causes visible scroll jank
     val prefs = getPreferences()
     val bgColorValue = prefs.getBackgroundColor()
-    val themed = prefs.getBooleanValue(ExportThemedKey)
+    val preferenceSnapshot by optionsViewModel.preferenceSnapshot.collectAsState()
+    val themed = preferenceSnapshot.getBooleanValue(ExportThemedKey)
 
     // Install times refresh whenever the set of packages changes — keying on size alone missed
     // a reinstall or list refresh that swapped apps without changing the count. Looked up off

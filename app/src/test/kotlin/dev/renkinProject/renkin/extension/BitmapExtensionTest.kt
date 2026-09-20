@@ -3,6 +3,7 @@ package dev.renkinProject.renkin.extension
 import android.app.Application
 import android.graphics.Bitmap
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -20,6 +21,17 @@ class BitmapExtensionTest {
 
     private fun Bitmap.pixels(): IntArray =
         IntArray(width * height).also { getPixels(it, 0, width, 0, 0, width, height) }
+
+    @Test
+    fun changeBackgroundColor_keepsSourceBitmapAlive() {
+        val source = bitmapOf(2, 2, intArrayOf(red, 0, 0, blue))
+
+        val result = source.changeBackgroundColor(blue)
+
+        assertFalse(source.isRecycled)
+        assertEquals(red, source.getPixel(0, 0))
+        assertEquals(red, result.getPixel(0, 0))
+    }
 
     @Test
     fun removeBackground_clearsFlatBorderAndKeepsCentre() {

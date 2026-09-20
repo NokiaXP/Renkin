@@ -7,6 +7,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorFilter
 import android.graphics.PixelFormat
+import android.graphics.PorterDuff
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
@@ -67,7 +68,9 @@ class IconGeneratorTest {
         colorizerGradientAngle: Float = 0f,
         color: Int = Color.BLACK,
         bgColor: Int = Color.WHITE,
-        useFullApplicationIcon: Boolean = false
+        useFullApplicationIcon: Boolean = false,
+        themed: Boolean = false,
+        colorizeLayers: List<SegmentLayer> = emptyList()
     ) = GenerationOptions(
         primarySource = source,
         primaryImageEdit = imageEdit,
@@ -77,7 +80,7 @@ class IconGeneratorTest {
         bgColor = bgColor,
         vector = false,
         materialYou = false,
-        themed = false,
+        themed = themed,
         override = override,
         iconScale = iconScale,
         iconOffsetX = iconOffsetX,
@@ -92,7 +95,8 @@ class IconGeneratorTest {
         colorizerGradientType = colorizerGradientType,
         colorizerGradientColors = colorizerGradientColors,
         colorizerGradientAngle = colorizerGradientAngle,
-        useFullApplicationIcon = useFullApplicationIcon
+        useFullApplicationIcon = useFullApplicationIcon,
+        colorizeLayers = colorizeLayers
     )
 
     private fun app(
@@ -200,6 +204,30 @@ class IconGeneratorTest {
             .toBitmap()
 
         assertEquals(stored.contentBounds(), reopened.contentBounds())
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun themedEmptySegmentLayerKeepsSourceAliveAndCarriesPreviewZoom() {
+        val source = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.RED)
+        }
+        val pipeline = IconImageEditPipeline(
+            context.resources,
+            options(
+                themed = true,
+                colorizeLayers = listOf(
+                    SegmentLayer(emptyList(), style = ColorizerStyle(firstColor = Color.BLUE))
+                )
+            )
+        )
+
+        val result = pipeline.colorize(source, PorterDuff.Mode.MULTIPLY) as BitmapIconDrawable
+
+        assertFalse(source.isRecycled)
+        assertTrue(result.isAdaptiveIcon())
+        assertEquals(1.5f, result.previewScale)
+        assertNotNull(result.previewBitmap().contentBounds())
     }
 
     @Test

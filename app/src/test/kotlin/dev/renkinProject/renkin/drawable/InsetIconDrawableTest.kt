@@ -55,6 +55,26 @@ class InsetIconDrawableTest {
     }
 
     @Test
+    fun insetPreviewAppliesAdaptiveZoomWithoutChangingExportRaster() {
+        val icon = InsetIconDrawable(
+            ImageVectorDrawable(lawniconsVector()),
+            Rect(),
+            RectF(LAWNICONS_INSET, LAWNICONS_INSET, LAWNICONS_INSET, LAWNICONS_INSET)
+        )
+
+        val exported = icon.toBitmap()
+        val preview = icon.previewBitmap()
+        val exportedBounds = requireNotNull(exported.contentBounds())
+        val previewBounds = requireNotNull(preview.contentBounds())
+
+        assertEquals(256, exported.width)
+        assertEquals(256, preview.width)
+        assertTrue(previewBounds.width() > exportedBounds.width())
+        assertTrue(previewBounds.height() > exportedBounds.height())
+        assertEquals(exportedBounds, icon.toBitmap().contentBounds())
+    }
+
+    @Test
     fun lawniconsInset_usesTheRemainingAreaInVectorPreview() {
         val vector = ImageVectorDrawable(lawniconsVector())
 

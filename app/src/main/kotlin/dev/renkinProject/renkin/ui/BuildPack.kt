@@ -40,6 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,7 +55,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.stringResource
 import androidx.datastore.preferences.core.Preferences
 import dev.renkinProject.renkin.ui.theme.IconShape
@@ -66,11 +69,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import dev.renkinProject.renkin.MainViewModel
+import dev.renkinProject.renkin.OptionsViewModel
 import dev.renkinProject.renkin.R
 import dev.renkinProject.renkin.ui.theme.AddedGreen
 import dev.renkinProject.renkin.ui.theme.ChangedOrange
-import dev.renkinProject.renkin.data.getPreferencesValue
+import dev.renkinProject.renkin.data.ExportThemedKey
+import dev.renkinProject.renkin.data.getBackgroundColor
+import dev.renkinProject.renkin.data.getBooleanValue
 import dev.renkinProject.renkin.packages.PackageInfoStruct
+import dev.renkinProject.renkin.packages.supportDynamicColors
 
 internal data class BuildPreviewApps(
     val applications: List<PackageInfoStruct>,
@@ -245,9 +252,17 @@ fun BuildPackPreviewContent(
 
     // Warn (before building) about calendar apps whose source pack lacks some 1..31 day
     // drawables — those days fall back to a repeated icon instead of rotating.
-    val preferences = getPreferences().getPreferencesValue()
+    val optionsViewModel: OptionsViewModel = hiltViewModel()
+    val preferences by optionsViewModel.preferenceSnapshot.collectAsState()
+    val themed = preferences.getBooleanValue(ExportThemedKey)
+    val context = LocalContext.current
+    val themedBackground = when {
+        !themed -> null
+        supportDynamicColors() -> colorResource(R.color.icon_background_color)
+        else -> preferences.getBackgroundColor(context)
+    }
     var calendarWarnings by remember { mutableStateOf<List<ApplicationProvider.CalendarWarning>>(emptyList()) }
-    LaunchedEffect(themedApps.size) {
+    LaunchedEffect(themedApps.size, preferences) {
         calendarWarnings = loadCalendarWarnings(preferences)
     }
 
@@ -350,7 +365,8 @@ fun BuildPackPreviewContent(
                             BuildPreviewItem(
                                 app = app,
                                 isNew = key !in builtKeys,
-                                isChanged = key in builtKeys && key in updatedKeys
+                                isChanged = key in builtKeys && key in updatedKeys,
+                                themedBackground = themedBackground
                             )
                         }
                     }
@@ -390,7 +406,8 @@ fun BuildPackPreviewContent(
 private fun BuildPreviewItem(
     app: PackageInfoStruct,
     isNew: Boolean = false,
-    isChanged: Boolean = false
+    isChanged: Boolean = false,
+    themedBackground: Color? = null
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box {
@@ -401,6 +418,7 @@ private fun BuildPreviewItem(
                     modifier = Modifier
                         .size(56.dp)
                         .clip(IconShape)
+                        .background(themedBackground ?: Color.Transparent)
                 )
             }
             // Green = new (not in last build); orange = edited this session (was already built)

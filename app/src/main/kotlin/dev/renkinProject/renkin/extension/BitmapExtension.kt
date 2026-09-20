@@ -214,7 +214,6 @@ fun Bitmap.changeBackgroundColor(color: Int): Bitmap {
     val canvas = Canvas(newBitmap)
     canvas.drawColor(color)
     canvas.drawBitmap(this, 0F, 0F, null)
-    recycle()
     return newBitmap
 }
 
