@@ -142,7 +142,10 @@ internal fun UploadGalleryContent(
                     if (selection.active) {
                         onSelectionChange(selection.toggle(path))
                     } else {
-                        onSelectedImageChange(path.takeUnless { it == selectedImagePath })
+                        // Selecting an image should never deselect it. Tapping the currently
+                        // selected thumbnail used to clear the path, hide the preview and make
+                        // the image appear as though it had failed to load.
+                        onSelectedImageChange(path)
                     }
                 },
                 onLongClick = {
