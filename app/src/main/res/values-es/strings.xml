@@ -729,4 +729,8 @@
     <string name="whatsNewBackup">**Copia de seguridad:** Guarda y restaura todos los datos de la aplicación en un solo archivo.</string>
     <string name="whatsNewTextSvg">**Más fuentes:** Crea iconos de texto o importa arte SVG.</string>
     <string name="whatsNewMaterialShapes">**Formas Material You:** Recorta iconos o colócalos sobre una placa de color.</string>
+    <string name="language">Idioma</string>
+    <string name="languageSystem">Seguir el idioma del dispositivo</string>
+    <string name="languageEnglish">Inglés</string>
+    <string name="languageSpanish">Español</string>
 </resources>
