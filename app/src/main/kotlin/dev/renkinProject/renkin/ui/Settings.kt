@@ -35,6 +35,8 @@ import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -44,6 +46,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -67,6 +70,8 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.datastore.core.DataStore
@@ -114,6 +119,7 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
     var confirmClearIcons by rememberSaveable { mutableStateOf(false) }
     var showIpsBackupWarning by rememberSaveable { mutableStateOf(false) }
     var showInstallerPicker by rememberSaveable { mutableStateOf(false) }
+    var showLanguagePicker by rememberSaveable { mutableStateOf(false) }
     var backupCheckInProgress by remember { mutableStateOf(false) }
     var pendingAutoBackupInterval by rememberSaveable { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
@@ -181,6 +187,21 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
                     ) {
                     SettingsSectionHeader(stringResource(R.string.settingsAppearance))
                     ThemeRow(prefs, viewModel::setDarkMode)
+                    val appLanguageTags = AppCompatDelegate.getApplicationLocales().toLanguageTags()
+                    val deviceLanguage = context.resources.configuration.locales[0].language
+                    val selectedLanguage = appLanguageTags.substringBefore('-').ifBlank { deviceLanguage }
+                    val languageLabel = when (selectedLanguage) {
+                        "es" -> stringResource(R.string.languageSpanish)
+                        "en" -> stringResource(R.string.languageEnglish)
+                        else -> stringResource(R.string.languageSystem)
+                    }
+                    SettingsRow(
+                        Icons.Filled.Translate,
+                        stringResource(R.string.language),
+                        subtitle = languageLabel
+                    ) {
+                        showLanguagePicker = true
+                    }
 
                     SettingsSectionHeader(stringResource(R.string.settingsIconPacks))
                     SettingsRow(
@@ -344,6 +365,49 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
                 }
             }
         }
+    }
+
+    if (showLanguagePicker) {
+        AlertDialog(
+            onDismissRequest = { showLanguagePicker = false },
+            title = { Text(stringResource(R.string.language)) },
+            text = {
+                Column {
+                    listOf(
+                        Triple("", stringResource(R.string.languageSystem), appLanguageTags.isBlank()),
+                        Triple("en", stringResource(R.string.languageEnglish), selectedLanguage == "en" && appLanguageTags.isNotBlank()),
+                        Triple("es", stringResource(R.string.languageSpanish), selectedLanguage == "es")
+                    ).forEach { (tag, label, selected) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    AppCompatDelegate.setApplicationLocales(
+                                        if (tag.isBlank()) LocaleListCompat.getEmptyLocaleList()
+                                        else LocaleListCompat.forLanguageTags(tag)
+                                    )
+                                    showLanguagePicker = false
+                                },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = selected, onClick = {
+                                AppCompatDelegate.setApplicationLocales(
+                                    if (tag.isBlank()) LocaleListCompat.getEmptyLocaleList()
+                                    else LocaleListCompat.forLanguageTags(tag)
+                                )
+                                showLanguagePicker = false
+                            })
+                            Text(label)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showLanguagePicker = false }) {
+                    Text(stringResource(R.string.close))
+                }
+            }
+        )
     }
 
     if (showInstallerPicker) {
