@@ -699,7 +699,7 @@
     <string name="whatsNewThemedIconState">**Iconos temáticos:** Mantienen su estado y se muestran con un tamaño uniforme al explorar y editar.</string>
     <string name="whatsNewSegmentPreview">**Segmentos de color:** Previsualiza los iconos seleccionados de forma fiable sin resultados en blanco ni errores.</string>
     <string name="whatsNewThemedPackPreview">**Vista previa del paquete:** Muestra el fondo adaptable usado por los iconos temáticos.</string>
-    <string name="whatsNewShadow">**Edición de iconos:** Usa el icono completo de la app o añade una sombra suave, marcada o resplandor.</string>
+    <string name="whatsNewShadow">**Edición de iconos:** Usa el icono completo de la aplicación o añade una sombra suave, marcada o un resplandor.</string>
     <string name="whatsNewColorize">**Colores:** Crea mezclas más claras conservando los detalles del icono.</string>
     <string name="whatsNewAutomaticBackups">**Copias de seguridad automáticas:** Conserva copias recientes y previsualiza una copia antes de restaurarla.</string>
     <string name="whatsNewInstallerChoice">**Instaladores:** Elige Sistema, Shizuku o un instalador compatible en tu primera compilación.</string>
@@ -713,7 +713,7 @@
     <string name="whatsNewGradients">**Degradados:** Úsalos en iconos, fondos, formas y contornos.</string>
     <string name="whatsNewSegments">**Segmentos de color:** Recolorea partes separadas de un mismo icono.</string>
     <string name="whatsNewBuildChanges">**Cambios de compilación:** Ve qué cambió y deshaz restablecimientos o actualizaciones de iconos.</string>
-    <string name="whatsNewQuickActions">**Acciones rápidas:** Mantén pulsada una app para actualizarla, vigilarla o restablecerla.</string>
+    <string name="whatsNewQuickActions">**Acciones rápidas:** Mantén pulsada una aplicación para actualizarla, vigilarla o restablecerla.</string>
     <string name="whatsNewWideLayouts">**Pantallas grandes:** Diseños mejorados para tablets y horizontal.</string>
     <string name="whatsNewGlobalModifiers">**Modificadores globales:** Aplica un estilo según la fuente del icono con vista previa en vivo del fondo de pantalla.</string>
     <string name="whatsNewOnlineIcons">**Iconos en línea:** Busca e importa arte desde Iconify.</string>
