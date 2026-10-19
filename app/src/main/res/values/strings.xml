@@ -735,4 +735,8 @@
     <string name="whatsNewBackup">**Backup:** Save and restore the whole app in one file.</string>
     <string name="whatsNewTextSvg">**More sources:** Create text icons or import SVG artwork.</string>
     <string name="whatsNewMaterialShapes">**Material You shapes:** Crop icons or place them on a colour plate.</string>
+    <string name="language">Language</string>
+    <string name="languageSystem">Follow device language</string>
+    <string name="languageEnglish">English</string>
+    <string name="languageSpanish">Spanish</string>
 </resources>
