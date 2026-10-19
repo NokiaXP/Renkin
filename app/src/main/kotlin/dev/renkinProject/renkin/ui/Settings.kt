@@ -110,6 +110,9 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
     val viewModel: MainViewModel = hiltViewModel()
     val view = LocalView.current
     val context = getCurrentContext()
+    val appLanguageTags = AppCompatDelegate.getApplicationLocales().toLanguageTags()
+    val deviceLanguage = context.resources.configuration.locale.language
+    val selectedLanguage = appLanguageTags.substringBefore('-').ifBlank { deviceLanguage }
 
     var showStats by rememberSaveable { mutableStateOf(false) }
     var showCrashLogs by rememberSaveable { mutableStateOf(false) }
@@ -187,9 +190,6 @@ fun SettingsScreen(prefs: DataStore<Preferences>, onDismiss: () -> Unit) {
                     ) {
                     SettingsSectionHeader(stringResource(R.string.settingsAppearance))
                     ThemeRow(prefs, viewModel::setDarkMode)
-                    val appLanguageTags = AppCompatDelegate.getApplicationLocales().toLanguageTags()
-                    val deviceLanguage = context.resources.configuration.locales[0].language
-                    val selectedLanguage = appLanguageTags.substringBefore('-').ifBlank { deviceLanguage }
                     val languageLabel = when (selectedLanguage) {
                         "es" -> stringResource(R.string.languageSpanish)
                         "en" -> stringResource(R.string.languageEnglish)
